@@ -1,0 +1,3 @@
+[submodule "staticnet"]
+	path = staticnet
+	url = ../staticnet.git
