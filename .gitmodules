@@ -1,3 +1,6 @@
 [submodule "staticnet"]
 	path = staticnet
 	url = ../staticnet.git
+[submodule "stm32/stm32-cpp"]
+	path = stm32/stm32-cpp
+	url = ../stm32-cpp.git
