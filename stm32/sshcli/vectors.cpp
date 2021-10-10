@@ -27,7 +27,7 @@
 *                                                                                                                      *
 ***********************************************************************************************************************/
 
-#include <stm32f777.h>
+#include "sshcli.h"
 
 typedef void(*fnptr)();
 
@@ -42,6 +42,8 @@ void UsageFault_Handler();
 void BusFault_Handler();
 void HardFault_Handler();
 void NMI_Handler();
+
+void USART2_Handler();
 
 void defaultISR();
 
@@ -104,7 +106,7 @@ fnptr __attribute__((section(".vector"))) vectorTable[] =
 	defaultISR,				//irq35 SPI1
 	defaultISR,				//irq36 SPI2
 	defaultISR,				//irq37 USART1
-	defaultISR,				//irq38 USART2
+	USART2_Handler,			//irq38 USART2
 	defaultISR,				//irq39 USART3
 	defaultISR,				//irq40 EXTI15_10
 	defaultISR,				//irq41 RTC_Alarm
@@ -183,7 +185,7 @@ fnptr __attribute__((section(".vector"))) vectorTable[] =
 
 void defaultISR()
 {
-	//g_platform.m_cliUart.PrintString("Unused interrupt vector called\n");
+	g_cliUART->PrintString("Unused interrupt vector called\n");
 	while(1)
 	{}
 }
@@ -193,14 +195,13 @@ void defaultISR()
 
 void NMI_Handler()
 {
-	//g_platform.m_cliUart.PrintString("NMI\n");
+	g_cliUART->PrintString("NMI\n");
 	while(1)
 	{}
 }
 
 void HardFault_Handler()
 {
-	/*
 	uint32_t* msp;
 	asm volatile("mrs %[result], MSP" : [result]"=r"(msp));
 	msp += 12;	//locals/alignment
@@ -213,48 +214,59 @@ void HardFault_Handler()
 	uint32_t pc = msp[6];
 	uint32_t xpsr = msp[7];
 
-	g_platform.m_cliUart.Printf("Hard fault\n");
-	g_platform.m_cliUart.Printf("    HFSR  = %08x\n", *(volatile uint32_t*)(0xe000ed2C));
-	g_platform.m_cliUart.Printf("    MMFAR = %08x\n", *(volatile uint32_t*)(0xe000ed34));
-	g_platform.m_cliUart.Printf("    BFAR  = %08x\n", *(volatile uint32_t*)(0xe000ed38));
-	g_platform.m_cliUart.Printf("    CFSR  = %08x\n", *(volatile uint32_t*)(0xe000ed28));
-	g_platform.m_cliUart.Printf("    UFSR  = %08x\n", *(volatile uint16_t*)(0xe000ed2a));
-	g_platform.m_cliUart.Printf("    DFSR  = %08x\n", *(volatile uint32_t*)(0xe000ed30));
-	g_platform.m_cliUart.Printf("    MSP   = %08x\n", msp);
-	g_platform.m_cliUart.Printf("    r0    = %08x\n", r0);
-	g_platform.m_cliUart.Printf("    r1    = %08x\n", r1);
-	g_platform.m_cliUart.Printf("    r2    = %08x\n", r2);
-	g_platform.m_cliUart.Printf("    r3    = %08x\n", r3);
-	g_platform.m_cliUart.Printf("    r12   = %08x\n", r12);
-	g_platform.m_cliUart.Printf("    lr    = %08x\n", lr);
-	g_platform.m_cliUart.Printf("    pc    = %08x\n", pc);
-	g_platform.m_cliUart.Printf("    xpsr  = %08x\n", xpsr);
+	g_cliUART->Printf("Hard fault\n");
+	g_cliUART->Printf("    HFSR  = %08x\n", *(volatile uint32_t*)(0xe000ed2C));
+	g_cliUART->Printf("    MMFAR = %08x\n", *(volatile uint32_t*)(0xe000ed34));
+	g_cliUART->Printf("    BFAR  = %08x\n", *(volatile uint32_t*)(0xe000ed38));
+	g_cliUART->Printf("    CFSR  = %08x\n", *(volatile uint32_t*)(0xe000ed28));
+	g_cliUART->Printf("    UFSR  = %08x\n", *(volatile uint16_t*)(0xe000ed2a));
+	g_cliUART->Printf("    DFSR  = %08x\n", *(volatile uint32_t*)(0xe000ed30));
+	g_cliUART->Printf("    MSP   = %08x\n", msp);
+	g_cliUART->Printf("    r0    = %08x\n", r0);
+	g_cliUART->Printf("    r1    = %08x\n", r1);
+	g_cliUART->Printf("    r2    = %08x\n", r2);
+	g_cliUART->Printf("    r3    = %08x\n", r3);
+	g_cliUART->Printf("    r12   = %08x\n", r12);
+	g_cliUART->Printf("    lr    = %08x\n", lr);
+	g_cliUART->Printf("    pc    = %08x\n", pc);
+	g_cliUART->Printf("    xpsr  = %08x\n", xpsr);
 
-	g_platform.m_cliUart.Printf("    Stack:\n");
+	g_cliUART->Printf("    Stack:\n");
 	for(int i=0; i<16; i++)
-		g_platform.m_cliUart.Printf("        %08x\n", msp[i]);
-	*/
+		g_cliUART->Printf("        %08x\n", msp[i]);
+
 	while(1)
 	{}
 }
 
 void BusFault_Handler()
 {
-	//g_platform.m_cliUart.PrintString("Bus fault\n");
+	g_cliUART->PrintString("Bus fault\n");
 	while(1)
 	{}
 }
 
 void UsageFault_Handler()
 {
-	//g_platform.m_cliUart.PrintString("Usage fault\n");
+	g_cliUART->PrintString("Usage fault\n");
 	while(1)
 	{}
 }
 
 void MMUFault_Handler()
 {
-	//g_platform.m_cliUart.PrintString("MMU fault\n");
+	g_cliUART->PrintString("MMU fault\n");
 	while(1)
 	{}
+}
+
+void __attribute__((isr)) USART2_Handler()
+{
+	//Check why we got the IRQ.
+	//For now, ignore anything other than "data ready"
+	if(0 == (USART2.ISR & USART_ISR_RXNE))
+		return;
+
+	//rx data? Shove it in the fifo
+	g_cliUART->OnIRQRxData(USART2.RDR);
 }
