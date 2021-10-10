@@ -46,7 +46,7 @@ enum cmdid_t
 
 static const clikeyword_t g_hostnameCommands[] =
 {
-	{"",			FREEFORM_TOKEN,		NULL,	"New host name"},
+	{"<string>",	FREEFORM_TOKEN,		NULL,	"New host name"},
 	{NULL,			INVALID_COMMAND,	NULL,	NULL}
 };
 
@@ -81,12 +81,12 @@ static const clikeyword_t g_rootCommands[] =
 BridgeCLISessionContext::BridgeCLISessionContext()
 	: CLISessionContext(g_rootCommands)
 {
+	strncpy(m_hostname, "demo", sizeof(m_hostname)-1);
 }
 
 void BridgeCLISessionContext::PrintPrompt()
 {
-	m_stream.PutString(m_username);
-	m_stream.PutString("@demo$ ");
+	m_stream.Printf("%s@%s$ ", m_username, m_hostname);
 	m_stream.Flush();
 }
 
@@ -95,14 +95,38 @@ void BridgeCLISessionContext::OnExecute()
 	switch(m_command[0].m_commandID)
 	{
 		case CMD_EXIT:
-			m_stream.PutString("\n");
 			m_stream.Flush();
 			m_stream.GetServer()->GracefulDisconnect(m_stream.GetSessionID(), m_stream.GetSocket());
 			break;
 
 		case CMD_HOSTNAME:
+			strncpy(m_hostname, m_command[1].m_text, sizeof(m_hostname)-1);
+			break;
+
+		case CMD_IP:
+			m_stream.Printf("set ip\n");
+			break;
+
+		case CMD_SHOW:
+			switch(m_command[1].m_commandID)
+			{
+				case CMD_FOO:
+					m_stream.Printf("showing foo\n");
+					break;
+
+				case CMD_BAR:
+					m_stream.Printf("showing bar\n");
+					break;
+
+				case CMD_BAZ:
+					m_stream.Printf("showing baz\n");
+					break;
+			}
+			break;
 
 		default:
 			break;
 	}
+
+	m_stream.Flush();
 }

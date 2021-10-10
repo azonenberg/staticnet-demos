@@ -59,6 +59,8 @@ protected:
 	virtual void OnExecute();
 
 	SSHOutputStream m_stream;
+
+	char m_hostname[33];
 };
 
 #endif

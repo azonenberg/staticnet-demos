@@ -32,6 +32,7 @@
 #include <peripheral/GPIO.h>
 #include <peripheral/RCC.h>
 
+//UART for the local console port
 UART* g_cliUART = NULL;
 
 int main()
