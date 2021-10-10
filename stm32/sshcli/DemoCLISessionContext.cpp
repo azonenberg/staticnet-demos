@@ -28,63 +28,106 @@
 ***********************************************************************************************************************/
 
 #include "sshcli.h"
-#include <peripheral/Flash.h>
-#include <peripheral/GPIO.h>
-#include <peripheral/RCC.h>
-#include <cli/UARTOutputStream.h>
 #include "DemoCLISessionContext.h"
 
-//UART console
-UART* g_cliUART = NULL;
-UARTOutputStream g_uartStream;
-DemoCLISessionContext g_uartCliContext;
-
-int main()
+//List of all valid commands
+enum cmdid_t
 {
-	//Configure the flash with wait states and prefetching before making any changes to the clock setup.
-	//A bit of extra latency is fine, the CPU being faster than flash is not.
-	Flash::SetConfiguration(true, true, 175, Flash::RANGE_2V7);
+	CMD_EXIT,
+	CMD_HOSTNAME,
+	CMD_SHOW,
+	CMD_IP,
+	CMD_ADDRESS,
+	CMD_FOO,
+	CMD_BAR,
+	CMD_BAZ
+};
 
-	//Set up the main system PLL. Input from HSI clock (16 MHz RC)
-	RCCHelper::InitializePLLFromInternalOscillator(
-		8,		//Pre-divider of 8 = 2 MHz input to PLL
-		175,	//Multiply by 175 = 350 MHz VCO
-		2,		//Divide VCO by 2 for CPU clock (175 MHz)
-		10,		//Divide VCO by 10 for RNG (35 MHz)
-		5,		//Divide VCO by 4 for MIPI DSI clock (70 MHz, but ignored since we don't have MIPI hardware)
-		1,		//Divide CPU clock by 1 to get AHB clock (175 MHz)
-		4,		//Divide AHB clock by 4 to get APB1 clock (43.75 MHz)
-		2);		//Divide AHB clock by 2 to get APB2 clock (87.5 MHz)
 
-	//TODO: Debug clock output on MCO1 (PA8) pmod, see 5.2.10?
+static const clikeyword_t g_hostnameCommands[] =
+{
+	{"<string>",	FREEFORM_TOKEN,		NULL,	"New host name"},
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
 
-	//Initialize the UART for local console: 115.2 Kbps using PA0 for UART4 transmit and PA3 for USART2 RX
-	//TODO: nice interface for enabling UART interrupts
-	GPIOPin uart_tx(&GPIOA, 0, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_SLOW, 8);
-	GPIOPin uart_rx(&GPIOA, 3, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_SLOW, 7);
-	UART uart(&UART4, &USART2, 380);
-	volatile uint32_t* NVIC_ISER1 = (volatile uint32_t*)(0xe000e104);
-	*NVIC_ISER1 = 0x40;
-	g_cliUART = &uart;
+static const clikeyword_t g_ipCommands[] =
+{
+	{"address",		CMD_ADDRESS,		NULL,	"ip help"},
 
-	//Initialize the CLI on the console UART interface
-	g_uartStream.Initialize(g_cliUART);
-	g_uartCliContext.Initialize(&g_uartStream, "admin");
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
 
-	//Enable interrupts only after all setup work is done
-	EnableInterrupts();
+static const clikeyword_t g_showCommands[] =
+{
+	{"foo",			CMD_FOO,			NULL,	"Look at foo"},
+	{"bar",			CMD_BAR,			NULL,	"Look at bar"},
+	{"baz",			CMD_BAZ,			NULL,	"Look at baz"},
 
-	//Show the initial prompt
-	g_uartCliContext.PrintPrompt();
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
 
-	while(1)
+
+//The top level command list
+static const clikeyword_t g_rootCommands[] =
+{
+	{"exit",		CMD_EXIT,			NULL,					"Log out"},
+	{"hostname",	CMD_HOSTNAME,		g_hostnameCommands,		"Change the host name"},
+	{"ip",			CMD_IP,				g_ipCommands,			"Configure IP addresses"},
+	{"show",		CMD_SHOW,			g_showCommands,			"Print information"},
+
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
+
+DemoCLISessionContext::DemoCLISessionContext()
+	: CLISessionContext(g_rootCommands)
+	, m_stream(NULL)
+{
+	strncpy(m_hostname, "demo", sizeof(m_hostname)-1);
+}
+
+void DemoCLISessionContext::PrintPrompt()
+{
+	m_stream->Printf("%s@%s$ ", m_username, m_hostname);
+	m_stream->Flush();
+}
+
+void DemoCLISessionContext::OnExecute()
+{
+	switch(m_command[0].m_commandID)
 	{
-		//Wait for an interrupt
-		asm("wfi");
+		case CMD_EXIT:
+			m_stream->Flush();
+			m_stream->Disconnect();
+			break;
 
-		if(g_cliUART->HasInput())
-			g_uartCliContext.OnKeystroke(g_cliUART->BlockingRead());
+		case CMD_HOSTNAME:
+			strncpy(m_hostname, m_command[1].m_text, sizeof(m_hostname)-1);
+			break;
+
+		case CMD_IP:
+			m_stream->Printf("set ip\n");
+			break;
+
+		case CMD_SHOW:
+			switch(m_command[1].m_commandID)
+			{
+				case CMD_FOO:
+					m_stream->Printf("showing foo\n");
+					break;
+
+				case CMD_BAR:
+					m_stream->Printf("showing bar\n");
+					break;
+
+				case CMD_BAZ:
+					m_stream->Printf("showing baz\n");
+					break;
+			}
+			break;
+
+		default:
+			break;
 	}
 
-	return 0;
+	m_stream->Flush();
 }

@@ -27,64 +27,48 @@
 *                                                                                                                      *
 ***********************************************************************************************************************/
 
-#include "sshcli.h"
-#include <peripheral/Flash.h>
-#include <peripheral/GPIO.h>
-#include <peripheral/RCC.h>
-#include <cli/UARTOutputStream.h>
-#include "DemoCLISessionContext.h"
+/**
+	@file
+	@brief Declaration of DemoCLISessionContext
+ */
+#ifndef DemoCLISessionContext_h
+#define DemoCLISessionContext_h
 
-//UART console
-UART* g_cliUART = NULL;
-UARTOutputStream g_uartStream;
-DemoCLISessionContext g_uartCliContext;
+#include <embedded-cli/CLIOutputStream.h>
+#include <embedded-cli/CLISessionContext.h>
+//#include <staticnet/cli/SSHOutputStream.h>
 
-int main()
+class DemoCLISessionContext : public CLISessionContext
 {
-	//Configure the flash with wait states and prefetching before making any changes to the clock setup.
-	//A bit of extra latency is fine, the CPU being faster than flash is not.
-	Flash::SetConfiguration(true, true, 175, Flash::RANGE_2V7);
+public:
+	DemoCLISessionContext();
 
-	//Set up the main system PLL. Input from HSI clock (16 MHz RC)
-	RCCHelper::InitializePLLFromInternalOscillator(
-		8,		//Pre-divider of 8 = 2 MHz input to PLL
-		175,	//Multiply by 175 = 350 MHz VCO
-		2,		//Divide VCO by 2 for CPU clock (175 MHz)
-		10,		//Divide VCO by 10 for RNG (35 MHz)
-		5,		//Divide VCO by 4 for MIPI DSI clock (70 MHz, but ignored since we don't have MIPI hardware)
-		1,		//Divide CPU clock by 1 to get AHB clock (175 MHz)
-		4,		//Divide AHB clock by 4 to get APB1 clock (43.75 MHz)
-		2);		//Divide AHB clock by 2 to get APB2 clock (87.5 MHz)
-
-	//TODO: Debug clock output on MCO1 (PA8) pmod, see 5.2.10?
-
-	//Initialize the UART for local console: 115.2 Kbps using PA0 for UART4 transmit and PA3 for USART2 RX
-	//TODO: nice interface for enabling UART interrupts
-	GPIOPin uart_tx(&GPIOA, 0, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_SLOW, 8);
-	GPIOPin uart_rx(&GPIOA, 3, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_SLOW, 7);
-	UART uart(&UART4, &USART2, 380);
-	volatile uint32_t* NVIC_ISER1 = (volatile uint32_t*)(0xe000e104);
-	*NVIC_ISER1 = 0x40;
-	g_cliUART = &uart;
-
-	//Initialize the CLI on the console UART interface
-	g_uartStream.Initialize(g_cliUART);
-	g_uartCliContext.Initialize(&g_uartStream, "admin");
-
-	//Enable interrupts only after all setup work is done
-	EnableInterrupts();
-
-	//Show the initial prompt
-	g_uartCliContext.PrintPrompt();
-
-	while(1)
+	/*
+	void Initialize(int sessid, TCPTableEntry* socket, SSHTransportServer* server, const char* username)
 	{
-		//Wait for an interrupt
-		asm("wfi");
+		m_stream.Initialize(sessid, socket, server);
 
-		if(g_cliUART->HasInput())
-			g_uartCliContext.OnKeystroke(g_cliUART->BlockingRead());
+		CLISessionContext::Initialize(&m_stream, username);
+	}
+	*/
+
+	void Initialize(CLIOutputStream* stream, const char* username)
+	{
+		m_stream = stream;
+		CLISessionContext::Initialize(m_stream, username);
 	}
 
-	return 0;
-}
+	virtual ~DemoCLISessionContext()
+	{}
+
+	virtual void PrintPrompt();
+
+protected:
+	virtual void OnExecute();
+
+	CLIOutputStream* m_stream;
+
+	char m_hostname[33];
+};
+
+#endif

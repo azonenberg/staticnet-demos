@@ -1,12 +1,15 @@
 CFLAGS=-g -mcpu=cortex-m7 -DSTM32F777 -O2
 CXXFLAGS=$(CFLAGS) --std=c++17 -fno-exceptions -fno-rtti -g --specs=nano.specs \
 	-I../stm32-cpp/devices/inc/ \
-	-I../stm32-cpp/src/
+	-I../stm32-cpp/src/ \
+	-I../../
 CC=arm-none-eabi-gcc
 CXX=arm-none-eabi-g++
 all:
 	$(CXX) *.cpp -c $(CXXFLAGS)
 	$(CC) ../stm32-cpp/src/cpu/*.S -c $(CFLAGS)
+	$(CXX) ../../embedded-cli/*.cpp -c $(CXXFLAGS)
+	$(CXX) ../stm32-cpp/src/cli/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../stm32-cpp/src/newlib-stubs/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../stm32-cpp/src/peripheral/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../stm32-cpp/src/util/*.cpp -c $(CXXFLAGS)
