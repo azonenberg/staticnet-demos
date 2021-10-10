@@ -29,31 +29,36 @@
 
 /**
 	@file
-	@brief Declaration of BridgeSSHTransportServer
+	@brief Declaration of BridgeCLISessionContext
  */
-#ifndef BridgeSSHTransportServer_h
-#define BridgeSSHTransportServer_h
+#ifndef BridgeCLISessionContext_h
+#define BridgeCLISessionContext_h
 
-#include <staticnet/ssh/SSHTransportServer.h>
-#include "BridgePasswordAuthenticator.h"
-#include "BridgeCLISessionContext.h"
+#include <embedded-cli/CLIOutputStream.h>
+#include <embedded-cli/CLISessionContext.h>
+#include <staticnet/cli/SSHOutputStream.h>
 
-/**
-	@brief SSH server class for the bridge test
- */
-class BridgeSSHTransportServer : public SSHTransportServer
+class BridgeCLISessionContext : public CLISessionContext
 {
 public:
-	BridgeSSHTransportServer(TCPProtocol& tcp);
-	virtual ~BridgeSSHTransportServer();
+	BridgeCLISessionContext();
+
+	void Initialize(int sessid, TCPTableEntry* socket, SSHTransportServer* server, const char* username)
+	{
+		m_stream.Initialize(sessid, socket, server);
+
+		CLISessionContext::Initialize(&m_stream, username);
+	}
+
+	virtual ~BridgeCLISessionContext()
+	{}
+
+	virtual void PrintPrompt();
 
 protected:
-	virtual void InitializeShell(int id, TCPTableEntry* socket);
-	virtual void OnRxShellData(int id, TCPTableEntry* socket, char* data, uint16_t len);
+	virtual void OnExecute();
 
-	BridgePasswordAuthenticator m_auth;
-
-	BridgeCLISessionContext m_context[SSH_TABLE_SIZE];
+	SSHOutputStream m_stream;
 };
 
 #endif

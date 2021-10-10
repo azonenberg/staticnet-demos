@@ -1,9 +1,15 @@
-include_directories(../../staticnet/)
+include_directories(../../)
 include_directories(.)
 
 ###############################################################################
 #C++ compilation
 add_executable(bridge
+	../../embedded-cli/CLIOutputStream.cpp
+	../../embedded-cli/CLISessionContext.cpp
+	../../embedded-cli/CLIToken.cpp
+
+	../../staticnet/cli/SSHOutputStream.cpp
+
 	../../staticnet/crypt/CryptoEngine.cpp
 
 	../../staticnet/drivers/base/EthernetInterface.cpp
@@ -28,6 +34,7 @@ add_executable(bridge
 	../../staticnet/contrib/tweetnacl_25519.cpp
 
 	main.cpp
+	BridgeCLISessionContext.cpp
 	BridgeCryptoEngine.cpp
 	BridgePasswordAuthenticator.cpp
 	BridgeSSHTransportServer.cpp

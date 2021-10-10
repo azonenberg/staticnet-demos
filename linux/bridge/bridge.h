@@ -33,8 +33,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <staticnet-config.h>
-#include <stack/staticnet.h>
-#include <drivers/tap/TapEthernetInterface.h>
+#include <staticnet/stack/staticnet.h>
+#include <staticnet/drivers/tap/TapEthernetInterface.h>
 
 #include "BridgeTCPProtocol.h"
 #include "BridgeCryptoEngine.h"

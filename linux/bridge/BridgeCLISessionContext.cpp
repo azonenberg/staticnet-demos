@@ -27,33 +27,82 @@
 *                                                                                                                      *
 ***********************************************************************************************************************/
 
-/**
-	@file
-	@brief Declaration of BridgeSSHTransportServer
- */
-#ifndef BridgeSSHTransportServer_h
-#define BridgeSSHTransportServer_h
-
-#include <staticnet/ssh/SSHTransportServer.h>
-#include "BridgePasswordAuthenticator.h"
+#include "bridge.h"
 #include "BridgeCLISessionContext.h"
 
-/**
-	@brief SSH server class for the bridge test
- */
-class BridgeSSHTransportServer : public SSHTransportServer
+//List of all valid commands
+enum cmdid_t
 {
-public:
-	BridgeSSHTransportServer(TCPProtocol& tcp);
-	virtual ~BridgeSSHTransportServer();
-
-protected:
-	virtual void InitializeShell(int id, TCPTableEntry* socket);
-	virtual void OnRxShellData(int id, TCPTableEntry* socket, char* data, uint16_t len);
-
-	BridgePasswordAuthenticator m_auth;
-
-	BridgeCLISessionContext m_context[SSH_TABLE_SIZE];
+	CMD_EXIT,
+	CMD_HOSTNAME,
+	CMD_SHOW,
+	CMD_IP,
+	CMD_ADDRESS,
+	CMD_FOO,
+	CMD_BAR,
+	CMD_BAZ
 };
 
-#endif
+
+static const clikeyword_t g_hostnameCommands[] =
+{
+	{"",			FREEFORM_TOKEN,		NULL,	"New host name"},
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
+
+static const clikeyword_t g_ipCommands[] =
+{
+	{"address",		CMD_ADDRESS,		NULL,	"ip help"},
+
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
+
+static const clikeyword_t g_showCommands[] =
+{
+	{"foo",			CMD_FOO,			NULL,	"Look at foo"},
+	{"bar",			CMD_BAR,			NULL,	"Look at bar"},
+	{"baz",			CMD_BAZ,			NULL,	"Look at baz"},
+
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
+
+
+//The top level command list
+static const clikeyword_t g_rootCommands[] =
+{
+	{"exit",		CMD_EXIT,			NULL,					"Log out"},
+	{"hostname",	CMD_HOSTNAME,		g_hostnameCommands,		"Change the host name"},
+	{"ip",			CMD_IP,				g_ipCommands,			"Configure IP addresses"},
+	{"show",		CMD_SHOW,			g_showCommands,			"Print information"},
+
+	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+};
+
+BridgeCLISessionContext::BridgeCLISessionContext()
+	: CLISessionContext(g_rootCommands)
+{
+}
+
+void BridgeCLISessionContext::PrintPrompt()
+{
+	m_stream.PutString(m_username);
+	m_stream.PutString("@demo$ ");
+	m_stream.Flush();
+}
+
+void BridgeCLISessionContext::OnExecute()
+{
+	switch(m_command[0].m_commandID)
+	{
+		case CMD_EXIT:
+			m_stream.PutString("\n");
+			m_stream.Flush();
+			m_stream.GetServer()->GracefulDisconnect(m_stream.GetSessionID(), m_stream.GetSocket());
+			break;
+
+		case CMD_HOSTNAME:
+
+		default:
+			break;
+	}
+}

@@ -62,4 +62,16 @@
 ///@brief SSH socket RX buffer size
 #define SSH_RX_BUFFER_SIZE 2048
 
+///@brief CLI TX buffer size
+#define CLI_TX_BUFFER_SIZE 1024
+
+///@brief Maximum length of a SSH username
+#define SSH_MAX_USERNAME	32
+
+///@brief Max length of a CLI username
+#define CLI_USERNAME_MAX SSH_MAX_USERNAME
+
+///@brief Maximum length of a SSH password
+#define SSH_MAX_PASSWORD	128
+
 #endif
