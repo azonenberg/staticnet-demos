@@ -33,14 +33,15 @@
 //List of all valid commands
 enum cmdid_t
 {
-	CMD_EXIT,
-	CMD_HOSTNAME,
-	CMD_SHOW,
-	CMD_IP,
 	CMD_ADDRESS,
-	CMD_FOO,
 	CMD_BAR,
-	CMD_BAZ
+	CMD_BAZ,
+	CMD_EXIT,
+	CMD_FOO,
+	CMD_HOSTNAME,
+	CMD_INIT,
+	CMD_IP,
+	CMD_SHOW
 };
 
 
@@ -66,12 +67,12 @@ static const clikeyword_t g_showCommands[] =
 	{NULL,			INVALID_COMMAND,	NULL,	NULL}
 };
 
-
 //The top level command list
 static const clikeyword_t g_rootCommands[] =
 {
 	{"exit",		CMD_EXIT,			NULL,					"Log out"},
 	{"hostname",	CMD_HOSTNAME,		g_hostnameCommands,		"Change the host name"},
+	{"init",		CMD_INIT,			NULL,					"Initialize Ethernet"},
 	{"ip",			CMD_IP,				g_ipCommands,			"Configure IP addresses"},
 	{"show",		CMD_SHOW,			g_showCommands,			"Print information"},
 
@@ -104,6 +105,11 @@ void DemoCLISessionContext::OnExecute()
 			strncpy(m_hostname, m_command[1].m_text, sizeof(m_hostname)-1);
 			break;
 
+		case CMD_INIT:
+			m_stream->Flush();
+			InitEthernet();
+			break;
+
 		case CMD_IP:
 			m_stream->Printf("set ip\n");
 			break;
@@ -131,3 +137,4 @@ void DemoCLISessionContext::OnExecute()
 
 	m_stream->Flush();
 }
+

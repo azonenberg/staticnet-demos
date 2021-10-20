@@ -34,9 +34,37 @@
 #include <stdint.h>
 #include <stm32fxxx.h>
 
+#include <peripheral/Flash.h>
+#include <peripheral/GPIO.h>
+#include <peripheral/RCC.h>
+#include <peripheral/SPI.h>
+#include <peripheral/Timer.h>
 #include <peripheral/UART.h>
+#include <util/Logger.h>
 #include <util/FIFO.h>
+#include <cli/UARTOutputStream.h>
+
+#include "DemoCLISessionContext.h"
 
 extern UART* g_cliUART;
+extern Logger g_log;
+extern UARTOutputStream g_uartStream;
+extern DemoCLISessionContext g_uartCliContext;
+extern GPIOPin* g_spiCS;
+extern SPI* g_spi;
+extern uint8_t g_macAddress[6];
+
+//Register IDs for the FPGA
+enum regids
+{
+	REG_STATUS			= 0x00,
+	REG_MAC_ADDR		= 0x01,
+	REG_EEPROM_SERIAL	= 0x02,
+	REG_SEND_TEST		= 0x03,
+	REG_RX_DISABLE		= 0x04,
+	REG_RX_ENABLE		= 0x05
+};
+
+void InitEthernet();
 
 #endif

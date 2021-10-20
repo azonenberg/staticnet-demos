@@ -28,48 +28,56 @@
 ***********************************************************************************************************************/
 
 #include "sshcli.h"
-#include <peripheral/Flash.h>
-#include <peripheral/GPIO.h>
-#include <peripheral/RCC.h>
-#include <peripheral/Timer.h>
-#include <util/Logger.h>
-#include <cli/UARTOutputStream.h>
-#include "DemoCLISessionContext.h"
 
 //UART console
 UART* g_cliUART = NULL;
 Logger g_log;
 UARTOutputStream g_uartStream;
 DemoCLISessionContext g_uartCliContext;
+Timer* g_logTimer;
+
+//SPI interface
+GPIOPin* g_spiCS = NULL;
+SPI* g_spi = NULL;
 
 //need a total of 4 descriptors in the ring
 static volatile uint8_t buffers[4][2048];
 static volatile edma_rx_descriptor_t rx_dma_descriptor[4];
 
 void InitClocks();
-void InitLog();
 void InitUART();
-void InitEthernet();
+void InitCLI();
+void InitLog();
+void DetectHardware();
+void InitSPI();
+//void InitEthernet();
+void InitEthernetMacAndDMA();
+bool TestEthernet(uint32_t num_frames);
+
+uint8_t GetFPGAStatus();
+
+uint8_t g_macAddress[6] = {0};
+
+bool g_hasRmiiErrata = false;
+
+int g_nextRxFrame = 0;
 
 int main()
 {
 	//Hardware setup
 	InitClocks();
 	InitUART();
+	InitCLI();
 	InitLog();
-	InitEthernet();
-
-	//Initialize the CLI on the console UART interface
-	g_uartStream.Initialize(g_cliUART);
-	g_uartCliContext.Initialize(&g_uartStream, "admin");
+	DetectHardware();
+	InitSPI();
+	//InitEthernet();
 
 	//Enable interrupts only after all setup work is done
 	EnableInterrupts();
 
 	//Show the initial prompt
-	//g_uartCliContext.PrintPrompt();
-
-	//TODO: use loopback mode to sanity check
+	g_uartCliContext.PrintPrompt();
 
 	//Main event loop
 	int nextRxFrame = 0;
@@ -77,6 +85,7 @@ int main()
 	uint32_t numRxBad = 0;
 	while(1)
 	{
+		/*
 		//Check if we have a new frame ready to process
 		auto& desc = rx_dma_descriptor[nextRxFrame];
 		if( (desc.RDES0 & 0x80000000) == 0)
@@ -128,14 +137,13 @@ int main()
 				InitEthernet();
 			}
 		}
+		*/
 
-		/*
 		//Wait for an interrupt
-		asm("wfi");
+		//asm("wfi");
 
 		if(g_cliUART->HasInput())
 			g_uartCliContext.OnKeystroke(g_cliUART->BlockingRead());
-		*/
 	}
 
 	return 0;
@@ -165,9 +173,92 @@ void InitLog()
 {
 	//APB1 is 43.75 MHz, divide down to get 1 kHz ticks
 	static Timer logtim(&TIM2, Timer::FEATURE_GENERAL_PURPOSE, 43750);
+	g_logTimer = &logtim;
 
 	g_log.Initialize(g_cliUART, &logtim);
 	g_log("UART logging ready\n");
+}
+
+void DetectHardware()
+{
+	g_log("Identifying hardware\n");
+	LogIndenter li(g_log);
+
+	uint16_t rev = DBGMCU.IDCODE >> 16;
+	uint16_t device = DBGMCU.IDCODE & 0xfff;
+
+	if(device == 0x451)
+	{
+		//Look up the stepping number
+		const char* srev = NULL;
+		switch(rev)
+		{
+			case 0x1000:
+				srev = "A";
+				g_hasRmiiErrata = true;
+				break;
+
+			case 0x1001:
+				srev = "Z";
+				break;
+
+			default:
+				srev = "(unknown)";
+		}
+
+		uint8_t pkg = (PKG_ID >> 8) & 0x7;
+		switch(pkg)
+		{
+			case 7:
+				g_log("STM32F767 / 777 LQFP208/TFBGA216 rev %s (0x%04x)\n", srev, rev);
+				break;
+			case 6:
+				g_log("STM32F769 / 779 LQFP208/TFBGA216 rev %s (0x%04x)\n", srev, rev);
+				break;
+			case 5:
+				g_log("STM32F767 / 777 LQFP176 rev %s (0x%04x)\n", srev, rev);
+				break;
+			case 4:
+				g_log("STM32F769 / 779 LQFP176 rev %s (0x%04x)\n", srev, rev);
+				break;
+			case 3:
+				g_log("STM32F778 / 779 WLCSP180 rev %s (0x%04x)\n", srev, rev);
+				break;
+			case 2:
+				g_log("STM32F767 / 777 LQFP144 rev %s (0x%04x)\n", srev, rev);
+				break;
+			case 1:
+				g_log("STM32F767 / 777 LQFP100 rev %s (0x%04x)\n", srev, rev);
+				break;
+			default:
+				g_log("Unknown/reserved STM32F76x/F77x rev %s (0x%04x)\n", srev, rev);
+				break;
+		}
+		g_log("512 kB total SRAM, 128 kB DTCM, 16 kB ITCM, 4 kB backup SRAM\n");
+		g_log("%d kB Flash\n", F_ID);
+
+		//U_ID fields documented in 45.1 of STM32 programming manual
+		uint16_t waferX = U_ID[0] >> 16;
+		uint16_t waferY = U_ID[0] & 0xffff;
+		uint8_t waferNum = U_ID[1] & 0xff;
+		char waferLot[8] =
+		{
+			static_cast<char>((U_ID[1] >> 24) & 0xff),
+			static_cast<char>((U_ID[1] >> 16) & 0xff),
+			static_cast<char>((U_ID[1] >> 8) & 0xff),
+			static_cast<char>((U_ID[2] >> 24) & 0xff),
+			static_cast<char>((U_ID[2] >> 16) & 0xff),
+			static_cast<char>((U_ID[2] >> 8) & 0xff),
+			static_cast<char>((U_ID[2] >> 0) & 0xff),
+			'\0'
+		};
+		g_log("Lot %s, wafer %d, die (%d, %d)\n", waferLot, waferNum, waferX, waferY);
+
+		if(g_hasRmiiErrata)
+			g_log("RMII RXD0 errata present\n");
+	}
+	else
+		g_log(Logger::WARNING, "Unknown device (0x%06x)\n", device);
 }
 
 void InitUART()
@@ -180,13 +271,82 @@ void InitUART()
 	volatile uint32_t* NVIC_ISER1 = (volatile uint32_t*)(0xe000e104);
 	*NVIC_ISER1 = 0x40;
 	g_cliUART = &uart;
+
+	//Clear screen and move cursor to X0Y0
+	uart.Printf("\x1b[2J\x1b[0;0H");
+}
+
+void InitCLI()
+{
+	g_log("Initializing CLI\n");
+
+	//Initialize the CLI on the console UART interface
+	g_uartStream.Initialize(g_cliUART);
+	g_uartCliContext.Initialize(&g_uartStream, "admin");
+}
+
+void InitSPI()
+{
+	g_log("Initializing SPI interface\n");
+
+	static GPIOPin spi_cs_n(&GPIOH, 5, GPIOPin::MODE_OUTPUT, GPIOPin::SLEW_FAST);
+	GPIOPin spi_sck(&GPIOH, 6, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_FAST, 5);
+	GPIOPin spi_miso(&GPIOH, 7, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_FAST, 5);
+	GPIOPin spi_mosi(&GPIOF, 11, GPIOPin::MODE_PERIPHERAL, GPIOPin::SLEW_FAST, 5);
+	g_spiCS = &spi_cs_n;
+	spi_cs_n = 1;
+
+	//APB2 is 87.5 MHz, /4 is 21.875 MHz
+	static SPI spi(&SPI5, true, 4);
+	g_spi = &spi;
+}
+
+uint8_t GetFPGAStatus()
+{
+	//Get the status register
+	*g_spiCS = 0;
+	g_spi->BlockingWrite(REG_STATUS);
+	uint8_t sr = g_spi->BlockingRead();
+	*g_spiCS = 1;
+
+	return sr;
 }
 
 void InitEthernet()
 {
 	g_log("Initializing Ethernet\n");
+	LogIndenter li(g_log);
+
+	//Wait for the FPGA to be up and have our MAC address
+	g_log("Polling FPGA status\n");
+	while(true)
+	{
+		auto sr = GetFPGAStatus();
+		if(sr & 1)
+		{
+			g_log(Logger::ERROR, "FPGA failed to get MAC address\n");
+			while(1)
+			{}
+		}
+
+		//address is ready
+		if(sr & 2)
+			break;
+	}
+	g_log("FPGA is up and has MAC address ready for us\n");
+
+	//Read the MAC address from the FPGA
+	*g_spiCS = 0;
+	g_spi->BlockingWrite(REG_MAC_ADDR);
+	for(int i=0; i<6; i++)
+		g_macAddress[i] = g_spi->BlockingRead();
+	*g_spiCS = 1;
+
+	g_log("Our MAC address is %02x:%02x:%02x:%02x:%02x:%02x\n",
+		g_macAddress[0], g_macAddress[1], g_macAddress[2], g_macAddress[3], g_macAddress[4], g_macAddress[5]);
 
 	//Initialize the Ethernet pins. AF11 on all pins
+	g_log("Initializing Ethernet pins\n");
 	GPIOPin rmii_refclk(&GPIOA, 1, GPIOPin::MODE_PERIPHERAL, 11);
 	GPIOPin rmii_mdio(&GPIOA, 2, GPIOPin::MODE_PERIPHERAL, 11);
 	GPIOPin rmii_crs_dv(&GPIOA, 7, GPIOPin::MODE_PERIPHERAL, 11);
@@ -197,16 +357,54 @@ void InitEthernet()
 	GPIOPin rmii_rxd0(&GPIOC, 4, GPIOPin::MODE_PERIPHERAL, 11);
 	GPIOPin rmii_rxd1(&GPIOC, 5, GPIOPin::MODE_PERIPHERAL, 11);
 
+	//Enable SYSCFG before changing any settings on it
+	RCC.APB2ENR |= RCC_APB2_SYSCFG;
+
 	//Ignore the MDIO bus for now
+
+	//Set up all of the SFRs for the Ethernet IP itself
+	InitEthernetMacAndDMA();
+
+	//See what part and silicon rev we are
+	if(g_hasRmiiErrata)
+	{
+		g_log("RMII errata workaround: testing for correct init\n");
+		bool ok = false;
+		int nmax = 5;
+		for(int i=0; i<nmax; i++)
+		{
+			if(TestEthernet(5))
+			{
+				g_log("RMII errata workaround: init complete after %d resets, enabling RX path in FPGA\n", i);
+
+				*g_spiCS = 0;
+				g_spi->BlockingWrite(REG_RX_ENABLE);
+				g_spi->WaitForWrites();
+				*g_spiCS = 1;
+				return;
+			}
+		}
+
+		g_log(Logger::ERROR, "Still couldn't get Ethernet working reliably after %d resets\n", nmax);
+	}
+}
+
+void InitEthernetMacAndDMA()
+{
+	if(g_hasRmiiErrata)
+	{
+		g_log("RMII errata workaround: disabling RX path in FPGA\n");
+		*g_spiCS = 0;
+		g_spi->BlockingWrite(REG_RX_DISABLE);
+		g_spi->WaitForWrites();
+		*g_spiCS = 1;
+	}
 
 	//Select RMII mode
 	//TODO: put this in RCCHelper
 	//Disable all Ethernet clocks (except 1588 which we don't need, leave it off to save power), reset MAC
 	RCC.AHB1ENR &= ~(RCC_AHB1_EMAC | RCC_AHB1_EMAC_TX | RCC_AHB1_EMAC_RX);
 	RCC.AHB1RSTR |= RCC_AHB1_EMAC;
-
-	//Enable SYSCFG before changing any settings on it
-	RCC.APB2ENR |= RCC_APB2_SYSCFG;
 
 	//Enable RMII
 	SYSCFG.PMC |= ETH_MODE_RMII;
@@ -218,17 +416,19 @@ void InitEthernet()
 	RCC.AHB1ENR |= RCC_AHB1_EMAC | RCC_AHB1_EMAC_TX | RCC_AHB1_EMAC_RX | RCC_AHB1_PTP;
 
 	//Wait for DMA to finish power-on reset
+	g_log("Waiting for Ethernet DMA reset\n");
 	while((EDMA.DMABMR & 1) == 1)
 	{}
+
+	g_log("Clearing performance counters\n");
+	EMAC.MMCCR = 1;
 
 	//Receive all frames. promiscuous mode
 	EMAC.MACFFR = 0x80000001;
 
-	/*
-		Create a simple DMA ring with a single descriptor in it
-		see 42.6.8
-		42.8
-	 */
+	g_log("Setting up DMA ring\n");
+
+	//Initialize DMA ring buffers
 	for(int i=0; i<4; i++)
 	{
 		rx_dma_descriptor[i].RDES0 = 0x80000000;
@@ -240,16 +440,95 @@ void InitEthernet()
 		rx_dma_descriptor[i].RDES2 = (uint32_t)&buffers[i];
 		rx_dma_descriptor[i].RDES3 = 0;
 	}
-
-	//Configure DMA descriptor list
 	EDMA.DMARDLAR = &rx_dma_descriptor[0];
 
 	//Select mode: 100/full, RX enabled, no TX, no carrier sense
 	EMAC.MACCR = 0x1c804;
 
 	//Poll demand DMA RX
-	//EDMA.DMARPDR = 0;
+	EDMA.DMARPDR = 0;
 
 	//Enable actual DMA in DMAOMR bits 1/13
 	EDMA.DMAOMR |= 2;
+
+	//Reset DMA buffer index
+	g_nextRxFrame = 0;
+}
+
+bool TestEthernet(uint32_t num_frames)
+{
+	g_log("Testing %d frames\n", num_frames);
+	LogIndenter li(g_log);
+
+	const int timeout = 5;
+
+	for(uint32_t i=0; i<num_frames; i++)
+	{
+		//Ask for the frame
+		*g_spiCS = 0;
+		g_spi->BlockingWrite(REG_SEND_TEST);
+		g_spi->WaitForWrites();
+		*g_spiCS = 1;
+
+		//Get current time
+		auto tim = g_logTimer->GetCount();
+
+		while(true)
+		{
+			auto& desc = rx_dma_descriptor[g_nextRxFrame];
+			if( (desc.RDES0 & 0x80000000) == 0)
+			{
+				g_log("Got frame %d\n", i);
+
+				int len = (desc.RDES0 >> 16) & 0x3fff;
+				if(len != 68)
+				{
+					g_log(Logger::ERROR, "Bad length on frame %d (%d bytes, expected 68)\n", i, len);
+					return false;
+				}
+
+				if(desc.RDES0 & 0x2)
+				{
+					g_log(Logger::ERROR, "Bad CRC on frame %d (in DMA header)\n", i);
+					g_log(Logger::ERROR, "Frame content: ");
+					for(int i=0; i<len; i++)
+						g_cliUART->Printf("%02x ", buffers[g_nextRxFrame][i]);
+					g_cliUART->Printf("\n");
+					return false;
+				}
+
+				//Done processing the frame, return it to the MAC
+				desc.RDES0 |= 0x80000000;
+				EDMA.DMARPDR = 0;
+
+				if(g_nextRxFrame == 3)
+					g_nextRxFrame = 0;
+				else
+					g_nextRxFrame ++;
+				break;
+			}
+
+			//If we see a CRC error in the counters but the frame didn't get DMA'd, it's still a fail
+			if(EMAC.MMCRFCECR != 0)
+			{
+				g_log(Logger::ERROR, "Bad CRC on frame %d (reported by counters)\n", i);
+				return false;
+			}
+
+			//Time out if it's been too long
+			auto delta = g_logTimer->GetCount() - tim;
+			if(delta >= timeout)
+			{
+				g_log(Logger::ERROR, "Timed out after %d ms waiting for frame %d\n", timeout, i);
+				g_log("MACDBGR   = %08x\n", EMAC.MACDBGR);
+				g_log("MMCRFCECR = %08x\n", EMAC.MMCRFCECR);
+				g_log("DMASR     = %08x\n", EDMA.DMASR);
+				for(int j=0; j<4; j++)
+					g_log("RDES0[%d]  = %08x\n", j, rx_dma_descriptor[j].RDES0);
+				return false;
+			}
+		}
+	}
+
+	return true;
 }
