@@ -40,9 +40,12 @@ Timer* g_logTimer;
 GPIOPin* g_spiCS = NULL;
 SPI* g_spi = NULL;
 
-//need a total of 4 descriptors in the ring
-static volatile uint8_t buffers[4][2048];
-static volatile edma_rx_descriptor_t rx_dma_descriptor[4];
+//Ethernet interface
+STM32EthernetInterface* g_eth;
+bool g_hasRmiiErrata = false;
+MACAddress g_macAddress;
+IPv4Config g_ipconfig;
+EthernetProtocol* g_ethStack;
 
 void InitClocks();
 void InitUART();
@@ -50,17 +53,11 @@ void InitCLI();
 void InitLog();
 void DetectHardware();
 void InitSPI();
-//void InitEthernet();
+void InitEthernet();
 void InitEthernetMacAndDMA();
 bool TestEthernet(uint32_t num_frames);
 
 uint8_t GetFPGAStatus();
-
-uint8_t g_macAddress[6] = {0};
-
-bool g_hasRmiiErrata = false;
-
-int g_nextRxFrame = 0;
 
 int main()
 {
@@ -71,7 +68,7 @@ int main()
 	InitLog();
 	DetectHardware();
 	InitSPI();
-	//InitEthernet();
+	InitEthernet();
 
 	//Enable interrupts only after all setup work is done
 	EnableInterrupts();
@@ -85,63 +82,15 @@ int main()
 	uint32_t numRxBad = 0;
 	while(1)
 	{
-		/*
-		//Check if we have a new frame ready to process
-		auto& desc = rx_dma_descriptor[nextRxFrame];
-		if( (desc.RDES0 & 0x80000000) == 0)
-		{
-			numRxFrames ++;
-
-			int len = (desc.RDES0 >> 16) & 0x3fff;
-			g_log("Got a frame (%d bytes) at descriptor %d\n", len, nextRxFrame);
-			LogIndenter li(g_log);
-
-			g_log("RDES = %08x %08x %08x %08x \n", desc.RDES0, desc.RDES1, desc.RDES2, desc.RDES3);
-			if(desc.RDES0 & 0x2)
-			{
-				g_log(Logger::ERROR, "CRC error\n");
-				numRxBad ++;
-			}
-
-			g_log("CRC / total: %d / %d", numRxBad, numRxFrames);
-			for(int i=0; i<len; i++)
-			{
-				if( (i & 63) == 0)
-					g_cliUART->Printf("\n    ");
-				g_cliUART->Printf("%02x ", buffers[nextRxFrame][i]);
-			}
-			g_cliUART->Printf("\n");
-
-			//Done processing the frame, return it to the MAC
-			desc.RDES0 |= 0x80000000;
-			EDMA.DMARPDR = 0;
-
-			if(nextRxFrame == 3)
-				nextRxFrame = 0;
-			else
-				nextRxFrame ++;
-
-			//Reset perf counters so they don't wrap
-			if(numRxFrames >= 0x80000000)
-			{
-				numRxFrames = 0;
-				numRxBad = 0;
-			}
-
-			//If we get a CRC error in the first 100 frames, reset the MAC
-			if( (numRxFrames < 100) && numRxBad)
-			{
-				g_log(Logger::ERROR, "CRC error seen on early packet, resetting MAC...\n");
-				numRxFrames = 0;
-				numRxBad = 0;
-				InitEthernet();
-			}
-		}
-		*/
-
 		//Wait for an interrupt
 		//asm("wfi");
 
+		//Poll for Ethernet frames
+		auto frame = g_eth->GetRxFrame();
+		if(frame != NULL)
+			g_ethStack->OnRxFrame(frame);
+
+		//Poll for UART input
 		if(g_cliUART->HasInput())
 			g_uartCliContext.OnKeystroke(g_cliUART->BlockingRead());
 	}
@@ -373,24 +322,67 @@ void InitEthernet()
 		int nmax = 5;
 		for(int i=0; i<nmax; i++)
 		{
-			if(TestEthernet(5))
+			if(TestEthernet(10))
 			{
-				g_log("RMII errata workaround: init complete after %d resets, enabling RX path in FPGA\n", i);
-
-				*g_spiCS = 0;
-				g_spi->BlockingWrite(REG_RX_ENABLE);
-				g_spi->WaitForWrites();
-				*g_spiCS = 1;
+				g_log("RMII errata workaround: init complete after %d resets\n", i);
 				return;
 			}
+
+			InitEthernetMacAndDMA();
 		}
 
 		g_log(Logger::ERROR, "Still couldn't get Ethernet working reliably after %d resets\n", nmax);
 	}
+
+	//Do a quick sanity check
+	else
+		TestEthernet(25);
+
+	//Our IP address: istick-1.sandbox.poulsbo.antikernel.net
+	//This is so much nicer looking with C++ 20 but Debian's arm-none-eabi-gcc cross compielr is currently stuck at
+	//C++ 17 even though the host compiler does 20 just fine...
+	g_ipconfig.m_address.m_octets[0] = 10;
+	g_ipconfig.m_address.m_octets[1] = 2;
+	g_ipconfig.m_address.m_octets[2] = 6;
+	g_ipconfig.m_address.m_octets[3] = 10;
+	g_ipconfig.m_netmask.m_octets[0] = 255;
+	g_ipconfig.m_netmask.m_octets[1] = 255;
+	g_ipconfig.m_netmask.m_octets[2] = 255;
+	g_ipconfig.m_netmask.m_octets[3] = 0;
+	g_ipconfig.m_broadcast.m_octets[0] = 10;
+	g_ipconfig.m_broadcast.m_octets[1] = 2;
+	g_ipconfig.m_broadcast.m_octets[2] = 6;
+	g_ipconfig.m_broadcast.m_octets[3] = 255;
+	g_ipconfig.m_gateway.m_octets[0] = 10;
+	g_ipconfig.m_gateway.m_octets[1] = 2;
+	g_ipconfig.m_gateway.m_octets[2] = 6;
+	g_ipconfig.m_gateway.m_octets[3] = 252;
+
+	//ARP cache
+	static ARPCache arpCache;
+
+	//Protocol stacks
+	static EthernetProtocol eth(*g_eth, g_macAddress);
+	static ARPProtocol arp(eth, g_ipconfig.m_address, arpCache);
+	static IPv4Protocol ipv4(eth, g_ipconfig, arpCache);
+	static ICMPv4Protocol icmpv4(ipv4);
+	//TODO: TCP
+
+	//Register protocol handlers
+	eth.UseARP(&arp);
+	eth.UseIPv4(&ipv4);
+	ipv4.UseICMPv4(&icmpv4);
+	//TODO: TCP
+
+	//Save the stack so we can use it later
+	g_ethStack = &eth;
 }
 
 void InitEthernetMacAndDMA()
 {
+	g_log("Initializing MAC and DMA\n");
+	LogIndenter li(g_log);
+
 	if(g_hasRmiiErrata)
 	{
 		g_log("RMII errata workaround: disabling RX path in FPGA\n");
@@ -409,56 +401,45 @@ void InitEthernetMacAndDMA()
 	//Enable RMII
 	SYSCFG.PMC |= ETH_MODE_RMII;
 
-	//Clear resets
-	RCC.AHB1RSTR &= ~RCC_AHB1_EMAC;
-
 	//Enable Ethernet clocks (except 1588 since we don't use that)
 	RCC.AHB1ENR |= RCC_AHB1_EMAC | RCC_AHB1_EMAC_TX | RCC_AHB1_EMAC_RX | RCC_AHB1_PTP;
+
+	//Clear resets
+	RCC.AHB1RSTR &= ~RCC_AHB1_EMAC;
 
 	//Wait for DMA to finish power-on reset
 	g_log("Waiting for Ethernet DMA reset\n");
 	while((EDMA.DMABMR & 1) == 1)
 	{}
-
-	g_log("Clearing performance counters\n");
 	EMAC.MMCCR = 1;
 
 	//Receive all frames. promiscuous mode
 	EMAC.MACFFR = 0x80000001;
 
-	g_log("Setting up DMA ring\n");
-
-	//Initialize DMA ring buffers
-	for(int i=0; i<4; i++)
-	{
-		rx_dma_descriptor[i].RDES0 = 0x80000000;
-		if(i == 3)
-			rx_dma_descriptor[i].RDES1 = 0x00008800;
-		else
-			rx_dma_descriptor[i].RDES1 = 0x00000800;
-
-		rx_dma_descriptor[i].RDES2 = (uint32_t)&buffers[i];
-		rx_dma_descriptor[i].RDES3 = 0;
-	}
-	EDMA.DMARDLAR = &rx_dma_descriptor[0];
-
-	//Select mode: 100/full, RX enabled, no TX, no carrier sense
-	EMAC.MACCR = 0x1c804;
+	//Create the Ethernet interface object
+	static STM32EthernetInterface enet;
+	g_eth = &enet;
 
 	//Poll demand DMA RX
 	EDMA.DMARPDR = 0;
 
+	//Select mode: 100/full, RX enabled, no TX, no carrier sense
+	EMAC.MACCR = 0x1c804;
+
 	//Enable actual DMA in DMAOMR bits 1/13
 	EDMA.DMAOMR |= 2;
-
-	//Reset DMA buffer index
-	g_nextRxFrame = 0;
 }
 
 bool TestEthernet(uint32_t num_frames)
 {
 	g_log("Testing %d frames\n", num_frames);
 	LogIndenter li(g_log);
+
+	g_log("Putting FPGA in test mode\n");
+	*g_spiCS = 0;
+	g_spi->BlockingWrite(REG_RX_DISABLE);
+	g_spi->WaitForWrites();
+	*g_spiCS = 1;
 
 	const int timeout = 5;
 
@@ -475,36 +456,17 @@ bool TestEthernet(uint32_t num_frames)
 
 		while(true)
 		{
-			auto& desc = rx_dma_descriptor[g_nextRxFrame];
-			if( (desc.RDES0 & 0x80000000) == 0)
+			//Check for a frame
+			auto frame = g_eth->GetRxFrame();
+			if(frame != NULL)
 			{
-				g_log("Got frame %d\n", i);
-
-				int len = (desc.RDES0 >> 16) & 0x3fff;
-				if(len != 68)
+				if(frame->Length() != 64)
 				{
-					g_log(Logger::ERROR, "Bad length on frame %d (%d bytes, expected 68)\n", i, len);
+					g_log(Logger::ERROR, "Bad length on frame %d (%d bytes, expected 64)\n", i, frame->Length());
 					return false;
 				}
 
-				if(desc.RDES0 & 0x2)
-				{
-					g_log(Logger::ERROR, "Bad CRC on frame %d (in DMA header)\n", i);
-					g_log(Logger::ERROR, "Frame content: ");
-					for(int i=0; i<len; i++)
-						g_cliUART->Printf("%02x ", buffers[g_nextRxFrame][i]);
-					g_cliUART->Printf("\n");
-					return false;
-				}
-
-				//Done processing the frame, return it to the MAC
-				desc.RDES0 |= 0x80000000;
-				EDMA.DMARPDR = 0;
-
-				if(g_nextRxFrame == 3)
-					g_nextRxFrame = 0;
-				else
-					g_nextRxFrame ++;
+				g_eth->ReleaseRxFrame(frame);
 				break;
 			}
 
@@ -512,6 +474,7 @@ bool TestEthernet(uint32_t num_frames)
 			if(EMAC.MMCRFCECR != 0)
 			{
 				g_log(Logger::ERROR, "Bad CRC on frame %d (reported by counters)\n", i);
+				break;
 				return false;
 			}
 
@@ -520,15 +483,16 @@ bool TestEthernet(uint32_t num_frames)
 			if(delta >= timeout)
 			{
 				g_log(Logger::ERROR, "Timed out after %d ms waiting for frame %d\n", timeout, i);
-				g_log("MACDBGR   = %08x\n", EMAC.MACDBGR);
-				g_log("MMCRFCECR = %08x\n", EMAC.MMCRFCECR);
-				g_log("DMASR     = %08x\n", EDMA.DMASR);
-				for(int j=0; j<4; j++)
-					g_log("RDES0[%d]  = %08x\n", j, rx_dma_descriptor[j].RDES0);
 				return false;
 			}
 		}
 	}
 
+	g_log("Test successful, enabling RX path in FPGA\n");
+
+	*g_spiCS = 0;
+	g_spi->BlockingWrite(REG_RX_ENABLE);
+	g_spi->WaitForWrites();
+	*g_spiCS = 1;
 	return true;
 }
