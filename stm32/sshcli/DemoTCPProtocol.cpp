@@ -35,7 +35,7 @@
 
 DemoTCPProtocol::DemoTCPProtocol(IPv4Protocol* ipv4)
 	: TCPProtocol(ipv4)
-	//, m_server(*this)
+	, m_server(*this)
 {
 }
 
@@ -50,7 +50,7 @@ bool DemoTCPProtocol::IsPortOpen(uint16_t port)
 void DemoTCPProtocol::OnConnectionAccepted(TCPTableEntry* state)
 {
 	//Tell the SSH server process to do its thing
-	//m_server.OnConnectionAccepted(state);
+	m_server.OnConnectionAccepted(state);
 }
 
 bool DemoTCPProtocol::OnRxData(TCPTableEntry* state, uint8_t* payload, uint16_t payloadLen)
@@ -60,8 +60,7 @@ bool DemoTCPProtocol::OnRxData(TCPTableEntry* state, uint8_t* payload, uint16_t 
 		return true;
 
 	//Pass the incoming traffic off to the SSH server process
-	//return m_server.OnRxData(state, payload, payloadLen);
-	return true;
+	return m_server.OnRxData(state, payload, payloadLen);
 }
 
 uint32_t DemoTCPProtocol::GenerateInitialSequenceNumber()

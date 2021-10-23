@@ -43,15 +43,6 @@ class DemoCLISessionContext : public CLISessionContext
 public:
 	DemoCLISessionContext();
 
-	/*
-	void Initialize(int sessid, TCPTableEntry* socket, SSHTransportServer* server, const char* username)
-	{
-		m_stream.Initialize(sessid, socket, server);
-
-		CLISessionContext::Initialize(&m_stream, username);
-	}
-	*/
-
 	void Initialize(CLIOutputStream* stream, const char* username)
 	{
 		m_stream = stream;

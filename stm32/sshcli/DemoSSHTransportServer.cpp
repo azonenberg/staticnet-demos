@@ -27,69 +27,37 @@
 *                                                                                                                      *
 ***********************************************************************************************************************/
 
-#include "bridge.h"
+#include "sshcli.h"
 
-//Set private key to a hard coded constant (from testdata/id_ed25519)
-uint8_t g_hostkeyPriv[32] =
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Construction / destruction
+
+DemoSSHTransportServer::DemoSSHTransportServer(TCPProtocol& tcp)
+	: SSHTransportServer(tcp)
 {
-	0xb2, 0xc8, 0x0c, 0x44, 0xb1, 0xad, 0x19, 0xb5,
-	0x7a, 0x66, 0x5e, 0xa1, 0x7c, 0x78, 0x8b, 0x7b,
-	0x4d, 0x20, 0xbf, 0x19, 0x49, 0x85, 0x97, 0x9e,
-	0xf2, 0x79, 0x3e, 0xdc, 0x83, 0xf4, 0xd1, 0xa7
-};
+	//Initialize crypto engines
+	for(size_t i=0; i<SSH_TABLE_SIZE; i++)
+		m_state[i].m_crypto = &m_crypto[i];
 
-uint8_t g_hostkeyPub[32] =
+	UsePasswordAuthenticator(&m_auth);
+}
+
+DemoSSHTransportServer::~DemoSSHTransportServer()
 {
-	0xf7, 0x45, 0xd2, 0x13, 0x13, 0x4b, 0x19, 0x97,
-	0xcf, 0xcf, 0x86, 0x98, 0xcc, 0x2b, 0x0c, 0xd2,
-	0xc0, 0x45, 0xb1, 0xc9, 0xd4, 0xba, 0x22, 0x9f,
-	0x08, 0x8c, 0x66, 0x90, 0xf2, 0x4b, 0xf4, 0xbf
-};
+}
 
-int main(int /*argc*/, char* /*argv*/[])
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Run a trivial shell
+
+void DemoSSHTransportServer::InitializeShell(int id, TCPTableEntry* socket)
 {
-	//Bring up the tap interface
-	TapEthernetInterface iface("simtap");
+	m_streams[id].Initialize(id, socket, this);
+	m_context[id].Initialize(&m_streams[id], m_state[id].m_username);
+	m_context[id].PrintPrompt();
+}
 
-	//Address configuration
-	MACAddress mac = {{ 0x02, 0xde, 0xad, 0xbe, 0xef, 0x41 }};
-	IPv4Config ipconfig;
-	ipconfig.m_address		= { .m_octets{192, 168,   1,   2} };
-	ipconfig.m_netmask		= { .m_octets{255, 255, 255,   0} };
-	ipconfig.m_broadcast	= { .m_octets{192, 168,   1, 255} };
-	ipconfig.m_gateway		= { .m_octets{192, 168,   1,   1} };
-
-	//ARP cache (shared by all interfaces)
-	ARPCache cache;
-
-	//Per-interface protocol stacks
-	EthernetProtocol eth(iface, mac);
-	ARPProtocol arp(eth, ipconfig.m_address, cache);
-
-	//Global protocol stacks
-	IPv4Protocol ipv4(eth, ipconfig, cache);
-	ICMPv4Protocol icmpv4(ipv4);
-	BridgeTCPProtocol tcp(&ipv4);
-
-	//Register protocol handlers with the lower layer
-	eth.UseARP(&arp);
-	eth.UseIPv4(&ipv4);
-	ipv4.UseICMPv4(&icmpv4);
-	ipv4.UseTCP(&tcp);
-
-	//Set up SSH host keys
-	CryptoEngine::SetHostKey(g_hostkeyPub, g_hostkeyPriv);
-
-	//Main event handling loop
-	while(true)
-	{
-		auto frame = iface.GetRxFrame();
-		if(frame)
-			eth.OnRxFrame(frame);
-
-		else
-			usleep(1000);
-	}
-
-	return 0;
+void DemoSSHTransportServer::OnRxShellData(int id, TCPTableEntry* /*socket*/, char* data, uint16_t len)
+{
+	for(uint16_t i=0; i<len; i++)
+		m_context[id].OnKeystroke(data[i]);
 }

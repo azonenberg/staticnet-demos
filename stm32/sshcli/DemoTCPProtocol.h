@@ -30,7 +30,7 @@
 #ifndef DemoTCPProtocol_h
 #define DemoTCPProtocol_h
 
-//#include "DemoSSHTransportServer.h"
+#include "DemoSSHTransportServer.h"
 
 class DemoTCPProtocol : public TCPProtocol
 {
@@ -46,7 +46,7 @@ protected:
 
 	STM32CryptoEngine m_crypt;
 
-	//DemoSSHTransportServer m_server;
+	DemoSSHTransportServer m_server;
 };
 
 #endif

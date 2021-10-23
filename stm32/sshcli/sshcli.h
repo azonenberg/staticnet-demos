@@ -50,6 +50,7 @@
 
 #include "DemoCLISessionContext.h"
 #include "DemoTCPProtocol.h"
+#include "DemoSSHTransportServer.h"
 
 extern UART* g_cliUART;
 extern Logger g_log;
