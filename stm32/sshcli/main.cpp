@@ -47,6 +47,8 @@ MACAddress g_macAddress;
 IPv4Config g_ipconfig;
 EthernetProtocol* g_ethStack;
 
+//Crypto stuff
+
 void InitClocks();
 void InitUART();
 void InitCLI();
@@ -54,7 +56,6 @@ void InitLog();
 void DetectHardware();
 void InitSPI();
 void InitEthernet();
-void InitEthernetMacAndDMA();
 bool TestEthernet(uint32_t num_frames);
 
 uint8_t GetFPGAStatus();
@@ -204,7 +205,7 @@ void DetectHardware()
 		g_log("Lot %s, wafer %d, die (%d, %d)\n", waferLot, waferNum, waferX, waferY);
 
 		if(g_hasRmiiErrata)
-			g_log("RMII RXD0 errata present\n");
+			g_log(Logger::WARNING, "RMII RXD0 errata present\n");
 	}
 	else
 		g_log(Logger::WARNING, "Unknown device (0x%06x)\n", device);
@@ -311,33 +312,6 @@ void InitEthernet()
 
 	//Ignore the MDIO bus for now
 
-	//Set up all of the SFRs for the Ethernet IP itself
-	InitEthernetMacAndDMA();
-
-	//See what part and silicon rev we are
-	if(g_hasRmiiErrata)
-	{
-		g_log("RMII errata workaround: testing for correct init\n");
-		bool ok = false;
-		int nmax = 5;
-		for(int i=0; i<nmax; i++)
-		{
-			if(TestEthernet(10))
-			{
-				g_log("RMII errata workaround: init complete after %d resets\n", i);
-				return;
-			}
-
-			InitEthernetMacAndDMA();
-		}
-
-		g_log(Logger::ERROR, "Still couldn't get Ethernet working reliably after %d resets\n", nmax);
-	}
-
-	//Do a quick sanity check
-	else
-		TestEthernet(25);
-
 	//Our IP address: istick-1.sandbox.poulsbo.antikernel.net
 	//This is so much nicer looking with C++ 20 but Debian's arm-none-eabi-gcc cross compielr is currently stuck at
 	//C++ 17 even though the host compiler does 20 just fine...
@@ -358,6 +332,14 @@ void InitEthernet()
 	g_ipconfig.m_gateway.m_octets[2] = 6;
 	g_ipconfig.m_gateway.m_octets[3] = 252;
 
+	//Set up all of the SFRs for the Ethernet IP itself
+	g_log("Initializing MAC and DMA\n");
+	static STM32EthernetInterface enet;
+	g_eth = &enet;
+
+	//Quick sanity check to make sure the link is up
+	TestEthernet(25);
+
 	//ARP cache
 	static ARPCache arpCache;
 
@@ -366,68 +348,16 @@ void InitEthernet()
 	static ARPProtocol arp(eth, g_ipconfig.m_address, arpCache);
 	static IPv4Protocol ipv4(eth, g_ipconfig, arpCache);
 	static ICMPv4Protocol icmpv4(ipv4);
-	//TODO: TCP
+	static DemoTCPProtocol tcp(&ipv4);
 
 	//Register protocol handlers
 	eth.UseARP(&arp);
 	eth.UseIPv4(&ipv4);
 	ipv4.UseICMPv4(&icmpv4);
-	//TODO: TCP
+	ipv4.UseTCP(&tcp);
 
 	//Save the stack so we can use it later
 	g_ethStack = &eth;
-}
-
-void InitEthernetMacAndDMA()
-{
-	g_log("Initializing MAC and DMA\n");
-	LogIndenter li(g_log);
-
-	if(g_hasRmiiErrata)
-	{
-		g_log("RMII errata workaround: disabling RX path in FPGA\n");
-		*g_spiCS = 0;
-		g_spi->BlockingWrite(REG_RX_DISABLE);
-		g_spi->WaitForWrites();
-		*g_spiCS = 1;
-	}
-
-	//Select RMII mode
-	//TODO: put this in RCCHelper
-	//Disable all Ethernet clocks (except 1588 which we don't need, leave it off to save power), reset MAC
-	RCC.AHB1ENR &= ~(RCC_AHB1_EMAC | RCC_AHB1_EMAC_TX | RCC_AHB1_EMAC_RX);
-	RCC.AHB1RSTR |= RCC_AHB1_EMAC;
-
-	//Enable RMII
-	SYSCFG.PMC |= ETH_MODE_RMII;
-
-	//Enable Ethernet clocks (except 1588 since we don't use that)
-	RCC.AHB1ENR |= RCC_AHB1_EMAC | RCC_AHB1_EMAC_TX | RCC_AHB1_EMAC_RX | RCC_AHB1_PTP;
-
-	//Clear resets
-	RCC.AHB1RSTR &= ~RCC_AHB1_EMAC;
-
-	//Wait for DMA to finish power-on reset
-	g_log("Waiting for Ethernet DMA reset\n");
-	while((EDMA.DMABMR & 1) == 1)
-	{}
-	EMAC.MMCCR = 1;
-
-	//Receive all frames. promiscuous mode
-	EMAC.MACFFR = 0x80000001;
-
-	//Create the Ethernet interface object
-	static STM32EthernetInterface enet;
-	g_eth = &enet;
-
-	//Poll demand DMA RX
-	EDMA.DMARPDR = 0;
-
-	//Select mode: 100/full, RX enabled, no TX, no carrier sense
-	EMAC.MACCR = 0x1c804;
-
-	//Enable actual DMA in DMAOMR bits 1/13
-	EDMA.DMAOMR |= 2;
 }
 
 bool TestEthernet(uint32_t num_frames)

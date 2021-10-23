@@ -46,8 +46,10 @@
 #include <staticnet-config.h>
 #include <staticnet/stack/staticnet.h>
 #include <staticnet/drivers/stm32/STM32EthernetInterface.h>
+#include <staticnet/drivers/stm32/STM32CryptoEngine.h>
 
 #include "DemoCLISessionContext.h"
+#include "DemoTCPProtocol.h"
 
 extern UART* g_cliUART;
 extern Logger g_log;

@@ -10,6 +10,7 @@ all:
 	$(CXX) *.cpp -c $(CXXFLAGS)
 	$(CC) ../stm32-cpp/src/cpu/*.S -c $(CFLAGS)
 	$(CXX) ../../embedded-cli/*.cpp -c $(CXXFLAGS)
+	$(CXX) ../../staticnet/crypt/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../../staticnet/drivers/base/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../../staticnet/drivers/stm32/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../../staticnet/net/arp/*.cpp -c $(CXXFLAGS)

@@ -37,4 +37,4 @@ DHEAPSTART=$(echo "obase=10;ibase=16;${HEAPSTART^^}" | bc);
 DHEAPEND=$(echo "obase=10;ibase=16;${HEAPEND^^}" | bc);
 HEAPSIZE=$(expr $DHEAPEND - $DHEAPSTART);
 HEAPKB=$(expr $HEAPSIZE / 1024);
-echo "Available for heap: $HEAPSIZE bytes";
+echo "Unused:             $HEAPSIZE bytes";

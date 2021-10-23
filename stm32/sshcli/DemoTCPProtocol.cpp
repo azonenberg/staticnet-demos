@@ -27,54 +27,46 @@
 *                                                                                                                      *
 ***********************************************************************************************************************/
 
-/**
-	@file
-	@brief Configuration file for staticnet test platform
- */
+#include "sshcli.h"
+#include "DemoTCPProtocol.h"
 
-#ifndef staticnet_config_h
-#define staticnet_config_h
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Construction / destruction
 
-///@brief Maximum size of an Ethernet frame (payload only, headers not included)
-#define ETHERNET_PAYLOAD_MTU 1500
+DemoTCPProtocol::DemoTCPProtocol(IPv4Protocol* ipv4)
+	: TCPProtocol(ipv4)
+	//, m_server(*this)
+{
+}
 
-///@brief Define this to zeroize all frame buffers between uses
-#define ZEROIZE_BUFFERS_BEFORE_USE
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Message handlers
 
-///@brief Define this to enable performance counters
-#define STATICNET_PERFORMANCE_COUNTERS
+bool DemoTCPProtocol::IsPortOpen(uint16_t port)
+{
+	return (port == 22);
+}
 
-///@brief Number of ways of associativity for the ARP cache
-#define ARP_CACHE_WAYS 4
+void DemoTCPProtocol::OnConnectionAccepted(TCPTableEntry* state)
+{
+	//Tell the SSH server process to do its thing
+	//m_server.OnConnectionAccepted(state);
+}
 
-///@brief Number of lines per set in the ARP cache
-#define ARP_CACHE_LINES 256
+bool DemoTCPProtocol::OnRxData(TCPTableEntry* state, uint8_t* payload, uint16_t payloadLen)
+{
+	//Discard anything not to port 22
+	if(state->m_localPort != 22)
+		return true;
 
-///@brief Number of entries in the TCP socket table
-#define TCP_TABLE_WAYS 2
+	//Pass the incoming traffic off to the SSH server process
+	//return m_server.OnRxData(state, payload, payloadLen);
+	return true;
+}
 
-///@brief Number of lines per set in the TCP socket table
-#define TCP_TABLE_LINES 16
-
-///@brief Maximum number of SSH connections supported
-#define SSH_TABLE_SIZE 2
-
-///@brief SSH socket RX buffer size
-#define SSH_RX_BUFFER_SIZE 2048
-
-///@brief CLI TX buffer size
-#define CLI_TX_BUFFER_SIZE 1024
-
-///@brief Maximum length of a SSH username
-#define SSH_MAX_USERNAME	32
-
-///@brief Max length of a CLI username
-#define CLI_USERNAME_MAX SSH_MAX_USERNAME
-
-///@brief Maximum length of a SSH password
-#define SSH_MAX_PASSWORD	128
-
-///@brief Number of frames of buffer space to allocate for transmit data
-#define TX_BUFFER_FRAMES	8
-
-#endif
+uint32_t DemoTCPProtocol::GenerateInitialSequenceNumber()
+{
+	uint32_t ret = 0;
+	m_crypt.GenerateRandom(reinterpret_cast<uint8_t*>(&ret), sizeof(ret));
+	return ret;
+}

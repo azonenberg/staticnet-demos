@@ -27,54 +27,26 @@
 *                                                                                                                      *
 ***********************************************************************************************************************/
 
-/**
-	@file
-	@brief Configuration file for staticnet test platform
- */
+#ifndef DemoTCPProtocol_h
+#define DemoTCPProtocol_h
 
-#ifndef staticnet_config_h
-#define staticnet_config_h
+//#include "DemoSSHTransportServer.h"
 
-///@brief Maximum size of an Ethernet frame (payload only, headers not included)
-#define ETHERNET_PAYLOAD_MTU 1500
+class DemoTCPProtocol : public TCPProtocol
+{
+public:
+	DemoTCPProtocol(IPv4Protocol* ipv4);
 
-///@brief Define this to zeroize all frame buffers between uses
-#define ZEROIZE_BUFFERS_BEFORE_USE
+protected:
+	virtual bool IsPortOpen(uint16_t port);
+	virtual void OnConnectionAccepted(TCPTableEntry* state);
+	virtual bool OnRxData(TCPTableEntry* state, uint8_t* payload, uint16_t payloadLen);
 
-///@brief Define this to enable performance counters
-#define STATICNET_PERFORMANCE_COUNTERS
+	virtual uint32_t GenerateInitialSequenceNumber();
 
-///@brief Number of ways of associativity for the ARP cache
-#define ARP_CACHE_WAYS 4
+	STM32CryptoEngine m_crypt;
 
-///@brief Number of lines per set in the ARP cache
-#define ARP_CACHE_LINES 256
-
-///@brief Number of entries in the TCP socket table
-#define TCP_TABLE_WAYS 2
-
-///@brief Number of lines per set in the TCP socket table
-#define TCP_TABLE_LINES 16
-
-///@brief Maximum number of SSH connections supported
-#define SSH_TABLE_SIZE 2
-
-///@brief SSH socket RX buffer size
-#define SSH_RX_BUFFER_SIZE 2048
-
-///@brief CLI TX buffer size
-#define CLI_TX_BUFFER_SIZE 1024
-
-///@brief Maximum length of a SSH username
-#define SSH_MAX_USERNAME	32
-
-///@brief Max length of a CLI username
-#define CLI_USERNAME_MAX SSH_MAX_USERNAME
-
-///@brief Maximum length of a SSH password
-#define SSH_MAX_PASSWORD	128
-
-///@brief Number of frames of buffer space to allocate for transmit data
-#define TX_BUFFER_FRAMES	8
+	//DemoSSHTransportServer m_server;
+};
 
 #endif
