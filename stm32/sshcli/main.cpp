@@ -76,8 +76,15 @@ static const uint8_t g_hostkeyPub[32] =
 
 uint8_t GetFPGAStatus();
 
+extern uint8_t __data_romstart;
+extern uint8_t __data_start;
+extern uint8_t __data_end;
+
 int main()
 {
+	//Copy .data from flash to SRAM (for some reason the default newlib startup won't do this??)
+	memcpy(&__data_start, &__data_romstart, &__data_end - &__data_start + 1);
+
 	//Hardware setup
 	InitClocks();
 	InitUART();
@@ -140,8 +147,9 @@ void InitClocks()
 
 void InitLog()
 {
-	//APB1 is 43.75 MHz, divide down to get 1 kHz ticks
-	static Timer logtim(&TIM2, Timer::FEATURE_GENERAL_PURPOSE, 43750);
+	//APB1 is 43.75 MHz but TIMxCLK = 2x that so 87.5 MHz.
+	//Divide down to get 10 kHz ticks
+	static Timer logtim(&TIM2, Timer::FEATURE_GENERAL_PURPOSE, 8750);
 	g_logTimer = &logtim;
 
 	g_log.Initialize(g_cliUART, &logtim);
@@ -390,7 +398,7 @@ bool TestEthernet(uint32_t num_frames)
 	g_spi->WaitForWrites();
 	*g_spiCS = 1;
 
-	const int timeout = 5;
+	const int timeout = 50;
 
 	for(uint32_t i=0; i<num_frames; i++)
 	{
@@ -431,7 +439,7 @@ bool TestEthernet(uint32_t num_frames)
 			auto delta = g_logTimer->GetCount() - tim;
 			if(delta >= timeout)
 			{
-				g_log(Logger::ERROR, "Timed out after %d ms waiting for frame %d\n", timeout, i);
+				g_log(Logger::ERROR, "Timed out after %d ms waiting for frame %d\n", timeout / 10, i);
 				return false;
 			}
 		}

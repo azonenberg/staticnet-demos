@@ -52,7 +52,7 @@ public:
 	virtual void Clear();
 
 	virtual void SHA256_Init();
-	virtual void SHA256_Update(uint8_t* data, uint16_t len);
+	virtual void SHA256_Update(const uint8_t* data, uint16_t len);
 	virtual void SHA256_Final(uint8_t* digest);
 
 	virtual bool DecryptAndVerify(uint8_t* data, uint16_t len);
