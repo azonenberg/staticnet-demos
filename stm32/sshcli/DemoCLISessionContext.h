@@ -56,10 +56,9 @@ public:
 
 protected:
 	virtual void OnExecute();
+	void ShowHardware();
 
 	CLIOutputStream* m_stream;
-
-	char m_hostname[33];
 };
 
 #endif

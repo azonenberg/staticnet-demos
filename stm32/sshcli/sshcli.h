@@ -59,6 +59,8 @@ extern DemoCLISessionContext g_uartCliContext;
 extern GPIOPin* g_spiCS;
 extern SPI* g_spi;
 
+extern MACAddress g_macAddress;
+
 //Register IDs for the FPGA
 enum regids
 {
@@ -69,5 +71,7 @@ enum regids
 	REG_RX_DISABLE		= 0x04,
 	REG_RX_ENABLE		= 0x05
 };
+
+extern bool g_hasRmiiErrata;
 
 #endif
