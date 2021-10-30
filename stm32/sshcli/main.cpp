@@ -28,6 +28,7 @@
 ***********************************************************************************************************************/
 
 #include "sshcli.h"
+#include <microkvs/driver/STM32StorageBank.h>
 
 //UART console
 UART* g_cliUART = NULL;
@@ -47,7 +48,8 @@ MACAddress g_macAddress;
 IPv4Config g_ipconfig;
 EthernetProtocol* g_ethStack;
 
-//Crypto stuff
+//KVS
+KVS* g_kvs;
 
 void InitClocks();
 void InitUART();
@@ -55,6 +57,7 @@ void InitCLI();
 void InitLog();
 void DetectHardware();
 void InitSPI();
+void InitKVS();
 void InitEthernet();
 bool TestEthernet(uint32_t num_frames);
 
@@ -92,6 +95,7 @@ int main()
 	InitLog();
 	DetectHardware();
 	InitSPI();
+	InitKVS();
 	InitEthernet();
 
 	//Set up SSH host keys
@@ -260,6 +264,8 @@ void InitCLI()
 	//Initialize the CLI on the console UART interface
 	g_uartStream.Initialize(g_cliUART);
 	g_uartCliContext.Initialize(&g_uartStream, "admin");
+
+	g_log("IP address not configured, defaulting to 192.168.1.42\n");
 }
 
 void InitSPI()
@@ -276,6 +282,35 @@ void InitSPI()
 	//APB2 is 87.5 MHz, /4 is 21.875 MHz
 	static SPI spi(&SPI5, true, 4);
 	g_spi = &spi;
+}
+
+void InitKVS()
+{
+	g_log("Initializing microkvs key-value store\n");
+	LogIndenter li(g_log);
+
+	/*
+		Use sectors 10 and 11 of main flash (in single bank mode) for a 256 kB microkvs
+
+		Each log entry is 28 bytes, and we want to allocate ~25% of storage to the log since our objects are pretty
+		small (SSH keys, IP addresses, etc). A 2048-entry log is a nice round number, and comes out to 56 kB or 21%,
+		leaving the remaining 200 kB or 79% for data.
+	 */
+	static STM32StorageBank left(reinterpret_cast<uint8_t*>(0x08180000), 0x40000);
+	static STM32StorageBank right(reinterpret_cast<uint8_t*>(0x081c0000), 0x40000);
+	static KVS kvs(&left, &right, 2048);
+	g_kvs = &kvs;
+
+	g_log("Log area:  %d free entries\n", g_kvs->GetFreeLogEntries());
+	uint32_t space = g_kvs->GetFreeDataSpace();
+	g_log("Data area: %d.%02d kB free space\n", space/1024, (space % 1024) * 100 / 1024);
+
+	//Load hostname, if we have it
+	if(!g_kvs->ReadObject("hostname", (uint8_t*)g_hostname, sizeof(g_hostname)-1))
+	{
+		g_log("Hostname not configured, defaulting to \"demo\"\n");
+		strncpy(g_hostname, "demo", sizeof(g_hostname));
+	}
 }
 
 uint8_t GetFPGAStatus()
@@ -339,25 +374,44 @@ void InitEthernet()
 
 	//Ignore the MDIO bus for now
 
-	//Our IP address: istick-1.sandbox.poulsbo.antikernel.net
-	//This is so much nicer looking with C++ 20 but Debian's arm-none-eabi-gcc cross compielr is currently stuck at
+	//Read IP address configuration
+	//Default to 192.168.1.42 if not configured
+	//This is so much nicer looking with C++ 20 but Debian's arm-none-eabi-gcc cross compiler is currently stuck at
 	//C++ 17 even though the host compiler does 20 just fine...
-	g_ipconfig.m_address.m_octets[0] = 10;
-	g_ipconfig.m_address.m_octets[1] = 2;
-	g_ipconfig.m_address.m_octets[2] = 6;
-	g_ipconfig.m_address.m_octets[3] = 10;
-	g_ipconfig.m_netmask.m_octets[0] = 255;
-	g_ipconfig.m_netmask.m_octets[1] = 255;
-	g_ipconfig.m_netmask.m_octets[2] = 255;
-	g_ipconfig.m_netmask.m_octets[3] = 0;
-	g_ipconfig.m_broadcast.m_octets[0] = 10;
-	g_ipconfig.m_broadcast.m_octets[1] = 2;
-	g_ipconfig.m_broadcast.m_octets[2] = 6;
-	g_ipconfig.m_broadcast.m_octets[3] = 255;
-	g_ipconfig.m_gateway.m_octets[0] = 10;
-	g_ipconfig.m_gateway.m_octets[1] = 2;
-	g_ipconfig.m_gateway.m_octets[2] = 6;
-	g_ipconfig.m_gateway.m_octets[3] = 252;
+	if(!g_kvs->ReadObject("ip.addr", g_ipconfig.m_address.m_octets, 4))
+	{
+		g_log("IP address not configured, defaulting to 192.168.1.42\n");
+		g_ipconfig.m_address.m_octets[0] = 192;
+		g_ipconfig.m_address.m_octets[1] = 168;
+		g_ipconfig.m_address.m_octets[2] = 1;
+		g_ipconfig.m_address.m_octets[3] = 42;
+	}
+
+	//Read subnet mask
+	//Default to /24 if not configured
+	if(!g_kvs->ReadObject("ip.netmask", g_ipconfig.m_netmask.m_octets, 4))
+	{
+		g_log("Subnet mask not configured, defaulting to 255.255.255.0\n");
+		g_ipconfig.m_netmask.m_octets[0] = 255;
+		g_ipconfig.m_netmask.m_octets[1] = 255;
+		g_ipconfig.m_netmask.m_octets[2] = 255;
+		g_ipconfig.m_netmask.m_octets[3] = 0;
+	}
+
+	//Read gateway address mask
+	//Default to 192.168.1.1 if not configured
+	if(!g_kvs->ReadObject("ip.gateway", g_ipconfig.m_gateway.m_octets, 4))
+	{
+		g_log("Default gateway not configured, defaulting to 192.168.1.1\n");
+		g_ipconfig.m_gateway.m_octets[0] = 192;
+		g_ipconfig.m_gateway.m_octets[1] = 168;
+		g_ipconfig.m_gateway.m_octets[2] = 1;
+		g_ipconfig.m_gateway.m_octets[3] = 1;
+	}
+
+	//Calculate broadcast address
+	for(int i=0; i<4; i++)
+		g_ipconfig.m_broadcast.m_octets[i] = g_ipconfig.m_address.m_octets[i] | ~g_ipconfig.m_netmask.m_octets[i];
 
 	//Set up all of the SFRs for the Ethernet IP itself
 	g_log("Initializing MAC and DMA\n");

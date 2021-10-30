@@ -9,6 +9,8 @@ CXX=arm-none-eabi-g++
 all:
 	$(CXX) *.cpp -c $(CXXFLAGS)
 	$(CC) ../stm32-cpp/src/cpu/*.S -c $(CFLAGS)
+	$(CXX) ../../microkvs/kvs/*.cpp -c $(CXXFLAGS)
+	$(CXX) ../../microkvs/driver/STM32*.cpp -c $(CXXFLAGS)
 	$(CXX) ../../embedded-cli/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../../staticnet/cli/*.cpp -c $(CXXFLAGS)
 	$(CXX) ../../staticnet/contrib/*.cpp -c $(CXXFLAGS)

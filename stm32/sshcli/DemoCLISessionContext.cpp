@@ -29,56 +29,106 @@
 
 #include "sshcli.h"
 #include "DemoCLISessionContext.h"
+#include <ctype.h>
 
-char g_hostname[33] = "stm32";
+char g_hostname[33] = {0};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Command table
 
 //List of all valid commands
 enum cmdid_t
 {
 	CMD_ADDRESS,
-	CMD_BAR,
-	CMD_BAZ,
+	CMD_ALL,
+	CMD_DEFAULT_GATEWAY,
 	CMD_EXIT,
-	CMD_FOO,
 	CMD_HARDWARE,
 	CMD_HOSTNAME,
 	CMD_IP,
-	CMD_SHOW
+	CMD_RELOAD,
+	CMD_ROUTE,
+	CMD_SHOW,
+	CMD_ZEROIZE,
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "hostname"
 
 static const clikeyword_t g_hostnameCommands[] =
 {
-	{"<string>",	FREEFORM_TOKEN,		NULL,	"New host name"},
-	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+	{"<string>",		FREEFORM_TOKEN,			NULL,						"New host name"},
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "ip"
+
+static const clikeyword_t g_ipAddressCommands[] =
+{
+	{"<string>",		FREEFORM_TOKEN,			NULL,						"New IPv4 address and subnet mask in x.x.x.x/yy format"},
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
+};
+
+static const clikeyword_t g_defaultGatewayCommands[] =
+{
+	{"<string>",		FREEFORM_TOKEN,			NULL,						"New IPv4 default gateway"},
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
 };
 
 static const clikeyword_t g_ipCommands[] =
 {
-	{"address",		CMD_ADDRESS,		NULL,	"ip help"},
+	{"address",			CMD_ADDRESS,			g_ipAddressCommands,		"Set the IPv4 address and subnet mask"},
+	{"default-gateway",	CMD_DEFAULT_GATEWAY,	g_defaultGatewayCommands,	"Set the IPv4 address and subnet mask"},
 
-	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "show"
+
+static const clikeyword_t g_showIpCommands[] =
+{
+	{"address",			CMD_ADDRESS,			NULL,						"Show the IPv4 address and subnet mask"},
+	{"route",			CMD_ROUTE,				NULL,						"Show the IPv4 routing table"},
+
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
 };
 
 static const clikeyword_t g_showCommands[] =
 {
-	{"bar",			CMD_BAR,			NULL,	"Look at bar"},
-	{"baz",			CMD_BAZ,			NULL,	"Look at baz"},
-	{"foo",			CMD_FOO,			NULL,	"Look at foo"},
-	{"hardware",	CMD_HARDWARE,		NULL,	"Look at hardware"},
+	{"hardware",		CMD_HARDWARE,			NULL,						"Look at hardware"},
+	{"ip",				CMD_IP,					g_showIpCommands,			"Print IP information"},
 
-	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+	{NULL,				INVALID_COMMAND,		NULL,	NULL}
 };
 
-//The top level command list
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "zeroize"
+
+static const clikeyword_t g_zeroizeCommands[] =
+{
+	{"all",				CMD_ALL,				NULL,						"Confirm erasing all data"},
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Top level command list
+
 static const clikeyword_t g_rootCommands[] =
 {
-	{"exit",		CMD_EXIT,			NULL,					"Log out"},
-	{"hostname",	CMD_HOSTNAME,		g_hostnameCommands,		"Change the host name"},
-	{"ip",			CMD_IP,				g_ipCommands,			"Configure IP addresses"},
-	{"show",		CMD_SHOW,			g_showCommands,			"Print information"},
+	{"exit",			CMD_EXIT,				NULL,						"Log out"},
+	{"hostname",		CMD_HOSTNAME,			g_hostnameCommands,			"Change the host name"},
+	{"ip",				CMD_IP,					g_ipCommands,				"Configure IP addresses"},
+	{"reload",			CMD_RELOAD,				NULL,						"Restart the system"},
+	{"show",			CMD_SHOW,				g_showCommands,				"Print information"},
+	{"zeroize",			CMD_ZEROIZE,			g_zeroizeCommands,			"Erase all configuration data and reset"},
 
-	{NULL,			INVALID_COMMAND,	NULL,	NULL}
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
 };
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Construction / destruction
 
 DemoCLISessionContext::DemoCLISessionContext()
 	: CLISessionContext(g_rootCommands)
@@ -86,11 +136,17 @@ DemoCLISessionContext::DemoCLISessionContext()
 {
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Prompt
+
 void DemoCLISessionContext::PrintPrompt()
 {
 	m_stream->Printf("%s@%s$ ", m_username, g_hostname);
 	m_stream->Flush();
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Top level command dispatch
 
 void DemoCLISessionContext::OnExecute()
 {
@@ -102,32 +158,36 @@ void DemoCLISessionContext::OnExecute()
 			break;
 
 		case CMD_HOSTNAME:
-			strncpy(g_hostname, m_command[1].m_text, sizeof(g_hostname)-1);
+			SetHostName(m_command[1].m_text);
 			break;
 
 		case CMD_IP:
-			m_stream->Printf("set ip\n");
+			switch(m_command[1].m_commandID)
+			{
+				case CMD_ADDRESS:
+					OnIPAddress(m_command[2].m_text);
+					break;
+
+				case CMD_DEFAULT_GATEWAY:
+					OnDefaultGateway(m_command[2].m_text);
+					break;
+
+				default:
+					break;
+			}
+			break;
+
+		case CMD_RELOAD:
+			OnReload();
 			break;
 
 		case CMD_SHOW:
-			switch(m_command[1].m_commandID)
-			{
-				case CMD_HARDWARE:
-					ShowHardware();
-					break;
+			OnShowCommand();
+			break;
 
-				case CMD_FOO:
-					m_stream->Printf("showing foo\n");
-					break;
-
-				case CMD_BAR:
-					m_stream->Printf("showing bar\n");
-					break;
-
-				case CMD_BAZ:
-					m_stream->Printf("showing baz\n");
-					break;
-			}
+		case CMD_ZEROIZE:
+			if(m_command[1].m_commandID == CMD_ALL)
+				OnZeroize();
 			break;
 
 		default:
@@ -137,12 +197,187 @@ void DemoCLISessionContext::OnExecute()
 	m_stream->Flush();
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "hostname"
+
+void DemoCLISessionContext::SetHostName(const char* name)
+{
+	strncpy(g_hostname, name, sizeof(g_hostname)-1);
+	g_kvs->StoreObject("hostname", (uint8_t*)g_hostname, sizeof(g_hostname)-1);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "ip"
+
+void DemoCLISessionContext::OnDefaultGateway(const char* ipstring)
+{
+	int len = strlen(ipstring);
+
+	int nfield = 0;
+	unsigned int fields[4] = {0};
+
+	//Parse
+	bool fail = false;
+	for(int i=0; i<len; i++)
+	{
+		//Dot = move to next field
+		if( (ipstring[i] == '.') && (nfield < 3) )
+			nfield ++;
+
+		//Digit = update current field
+		else if(isdigit(ipstring[i]))
+			fields[nfield] = (fields[nfield] * 10) + (ipstring[i] - '0');
+
+		else
+		{
+			fail = true;
+			break;
+		}
+	}
+
+	//Validate
+	if(nfield != 3)
+		fail = true;
+	for(int i=0; i<4; i++)
+	{
+		if(fields[i] > 255)
+		{
+			fail = true;
+			break;
+		}
+	}
+	if(fail)
+	{
+		m_stream->Printf("Usage: ip default-gateway x.x.x.x\n");
+		return;
+	}
+
+	//Set the IP
+	for(int i=0; i<4; i++)
+		g_ipconfig.m_gateway.m_octets[i] = fields[i];
+
+	//Write the new configuration to flash
+	if(!g_kvs->StoreObject("ip.gateway", g_ipconfig.m_gateway.m_octets, 4))
+		g_log(Logger::ERROR, "Failed to write gateway to flash\n");
+}
+
+void DemoCLISessionContext::OnIPAddress(const char* ipstring)
+{
+	int len = strlen(ipstring);
+
+	int nfield = 0;	//0-3 = IP, 4 = netmask
+	unsigned int fields[5] = {0};
+
+	//Parse
+	bool fail = false;
+	for(int i=0; i<len; i++)
+	{
+		//Dot = move to next field
+		if( (ipstring[i] == '.') && (nfield < 3) )
+			nfield ++;
+
+		//Slash = move to netmask
+		else if( (ipstring[i] == '/') && (nfield == 3) )
+			nfield ++;
+
+		//Digit = update current field
+		else if(isdigit(ipstring[i]))
+			fields[nfield] = (fields[nfield] * 10) + (ipstring[i] - '0');
+
+		else
+		{
+			fail = true;
+			break;
+		}
+	}
+
+	//Validate
+	if(nfield != 4)
+		fail = true;
+	for(int i=0; i<4; i++)
+	{
+		if(fields[i] > 255)
+		{
+			fail = true;
+			break;
+		}
+	}
+	if( (fields[4] > 32) || (fields[4] == 0) )
+		fail = true;
+	if(fail)
+	{
+		m_stream->Printf("Usage: ip address x.x.x.x/yy\n");
+		return;
+	}
+
+	//Set the IP
+	for(int i=0; i<4; i++)
+		g_ipconfig.m_address.m_octets[i] = fields[i];
+
+	//Calculate the netmask
+	uint32_t mask = 0xffffffff << (32 - fields[4]);
+	g_ipconfig.m_netmask.m_octets[0] = (mask >> 24) & 0xff;
+	g_ipconfig.m_netmask.m_octets[1] = (mask >> 16) & 0xff;
+	g_ipconfig.m_netmask.m_octets[2] = (mask >> 8) & 0xff;
+	g_ipconfig.m_netmask.m_octets[3] = (mask >> 0) & 0xff;
+
+	//Calculate the broadcast address
+	for(int i=0; i<4; i++)
+		g_ipconfig.m_broadcast.m_octets[i] = g_ipconfig.m_address.m_octets[i] | ~g_ipconfig.m_netmask.m_octets[i];
+
+	//Write the new IP configuration to flash
+	if(!g_kvs->StoreObject("ip.addr", g_ipconfig.m_address.m_octets, 4))
+		g_log(Logger::ERROR, "Failed to write IP address to flash\n");
+	if(!g_kvs->StoreObject("ip.netmask", g_ipconfig.m_netmask.m_octets, 4))
+		g_log(Logger::ERROR, "Failed to write IP address to flash\n");
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "reload"
+
+void DemoCLISessionContext::OnReload()
+{
+	g_log("Reload requested\n");
+	SCB.AIRCR = 0x05fa0004;
+	while(1)
+	{}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "show"
+
+void DemoCLISessionContext::OnShowCommand()
+{
+	switch(m_command[1].m_commandID)
+	{
+		case CMD_HARDWARE:
+			ShowHardware();
+			break;
+
+		case CMD_IP:
+			switch(m_command[2].m_commandID)
+			{
+				case CMD_ADDRESS:
+					ShowIPAddr();
+					break;
+
+				case CMD_ROUTE:
+					ShowIPRoute();
+					break;
+
+				default:
+					break;
+			}
+			break;
+	}
+}
+
 void DemoCLISessionContext::ShowHardware()
 {
 	uint16_t rev = DBGMCU.IDCODE >> 16;
 	uint16_t device = DBGMCU.IDCODE & 0xfff;
 
-	m_stream->Printf("CPU:\n");
+	m_stream->Printf("MCU:\n");
 	if(device == 0x451)
 	{
 		//Look up the stepping number
@@ -215,6 +450,83 @@ void DemoCLISessionContext::ShowHardware()
 	else
 		m_stream->Printf("Unknown device (0x%06x)\n", device);
 
-	m_stream->Printf("Our MAC address is %02x:%02x:%02x:%02x:%02x:%02x\n",
+	//Print CPU info
+	if( (SCB.CPUID & 0xff00fff0) == 0x4100c270 )
+	{
+		m_stream->Printf("ARM Cortex-M7 r%dp%d\n", (SCB.CPUID >> 20) & 0xf, (SCB.CPUID & 0xf));
+		m_stream->Printf("CPUID = %08x\n", &CPUID);
+		if(CPUID.CLIDR & 2)
+		{
+			m_stream->Printf("    L1 data cache present\n");
+			CPUID.CCSELR = 0;
+
+			int sets = ((CPUID.CCSIDR >> 13) & 0x7fff) + 1;
+			int ways = ((CPUID.CCSIDR >> 3) & 0x3ff) + 1;
+			int words = 1 << ((CPUID.CCSIDR & 3) + 2);
+			int total = (sets * ways * words * 4) / 1024;
+			m_stream->Printf("        %d sets, %d ways, %d words per line, %d kB total\n",
+				sets, ways, words, total);
+		}
+		if(CPUID.CLIDR & 1)
+		{
+			m_stream->Printf("    L1 instruction cache present\n");
+			CPUID.CCSELR = 1;
+
+			int sets = ((CPUID.CCSIDR >> 13) & 0x7fff) + 1;
+			int ways = ((CPUID.CCSIDR >> 3) & 0x3ff) + 1;
+			int words = 1 << ((CPUID.CCSIDR & 3) + 2);
+			int total = (sets * ways * words * 4) / 1024;
+			m_stream->Printf("        %d sets, %d ways, %d words per line, %d kB total\n",
+				sets, ways, words, total);
+		}
+	}
+	else
+		m_stream->Printf("Unknown CPU (0x%08x)\n", SCB.CPUID);
+
+	m_stream->Printf("Ethernet MAC address is %02x:%02x:%02x:%02x:%02x:%02x\n",
 		g_macAddress[0], g_macAddress[1], g_macAddress[2], g_macAddress[3], g_macAddress[4], g_macAddress[5]);
+}
+
+void DemoCLISessionContext::ShowIPAddr()
+{
+	m_stream->Printf("IPv4 address: %d.%d.%d.%d\n",
+		g_ipconfig.m_address.m_octets[0],
+		g_ipconfig.m_address.m_octets[1],
+		g_ipconfig.m_address.m_octets[2],
+		g_ipconfig.m_address.m_octets[3]
+	);
+
+	m_stream->Printf("Subnet mask:  %d.%d.%d.%d\n",
+		g_ipconfig.m_netmask.m_octets[0],
+		g_ipconfig.m_netmask.m_octets[1],
+		g_ipconfig.m_netmask.m_octets[2],
+		g_ipconfig.m_netmask.m_octets[3]
+	);
+
+	m_stream->Printf("Broadcast:    %d.%d.%d.%d\n",
+		g_ipconfig.m_broadcast.m_octets[0],
+		g_ipconfig.m_broadcast.m_octets[1],
+		g_ipconfig.m_broadcast.m_octets[2],
+		g_ipconfig.m_broadcast.m_octets[3]
+	);
+}
+
+void DemoCLISessionContext::ShowIPRoute()
+{
+	m_stream->Printf("IPv4 routing table\n");
+	m_stream->Printf("Destination     Gateway\n");
+	m_stream->Printf("0.0.0.0         %d.%d.%d.%d\n",
+		g_ipconfig.m_gateway.m_octets[0],
+		g_ipconfig.m_gateway.m_octets[1],
+		g_ipconfig.m_gateway.m_octets[2],
+		g_ipconfig.m_gateway.m_octets[3]);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// "zeroize"
+
+void DemoCLISessionContext::OnZeroize()
+{
+	g_kvs->WipeAll();
+	OnReload();
 }

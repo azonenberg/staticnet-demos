@@ -47,6 +47,7 @@
 #include <staticnet/stack/staticnet.h>
 #include <staticnet/drivers/stm32/STM32EthernetInterface.h>
 #include <staticnet/drivers/stm32/STM32CryptoEngine.h>
+#include <microkvs/kvs/KVS.h>
 
 #include "DemoCLISessionContext.h"
 #include "DemoTCPProtocol.h"
@@ -58,8 +59,11 @@ extern UARTOutputStream g_uartStream;
 extern DemoCLISessionContext g_uartCliContext;
 extern GPIOPin* g_spiCS;
 extern SPI* g_spi;
+extern KVS* g_kvs;
 
+extern char g_hostname[33];
 extern MACAddress g_macAddress;
+extern IPv4Config g_ipconfig;
 
 //Register IDs for the FPGA
 enum regids

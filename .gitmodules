@@ -7,3 +7,6 @@
 [submodule "embedded-cli"]
 	path = embedded-cli
 	url = ../embedded-cli.git
+[submodule "microkvs"]
+	path = microkvs
+	url = ../microkvs.git
