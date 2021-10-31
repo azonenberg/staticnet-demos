@@ -43,6 +43,7 @@ enum cmdid_t
 	CMD_ALL,
 	CMD_DEFAULT_GATEWAY,
 	CMD_EXIT,
+	CMD_FLASH,
 	CMD_HARDWARE,
 	CMD_HOSTNAME,
 	CMD_IP,
@@ -97,6 +98,7 @@ static const clikeyword_t g_showIpCommands[] =
 
 static const clikeyword_t g_showCommands[] =
 {
+	{"flash",			CMD_FLASH,				NULL,						"Print contents and size of config storage"},
 	{"hardware",		CMD_HARDWARE,			NULL,						"Look at hardware"},
 	{"ip",				CMD_IP,					g_showIpCommands,			"Print IP information"},
 
@@ -350,6 +352,10 @@ void DemoCLISessionContext::OnShowCommand()
 {
 	switch(m_command[1].m_commandID)
 	{
+		case CMD_FLASH:
+			ShowFlash();
+			break;
+
 		case CMD_HARDWARE:
 			ShowHardware();
 			break;
@@ -370,6 +376,40 @@ void DemoCLISessionContext::OnShowCommand()
 			}
 			break;
 	}
+}
+
+void DemoCLISessionContext::ShowFlash()
+{
+	//Print info about the flash memory in general
+	m_stream->Printf("Flash configuration storage is 2 banks of %d kB\n", g_kvs->GetBlockSize());
+	if(g_kvs->IsLeftBankActive())
+		m_stream->Printf("    Active bank: Left\n");
+	else
+		m_stream->Printf("    Active bank: Right\n");
+	m_stream->Printf("    Log area:    %6d / %6d entries free (%d %%)\n",
+		g_kvs->GetFreeLogEntries(),
+		g_kvs->GetLogCapacity(),
+		g_kvs->GetFreeLogEntries()*100 / g_kvs->GetLogCapacity());
+	m_stream->Printf("    Data area:   %6d / %6d kB free      (%d %%)\n",
+		g_kvs->GetFreeDataSpace(),
+		g_kvs->GetDataCapacity(),
+		g_kvs->GetFreeDataSpace() * 100 / g_kvs->GetDataCapacity());
+
+	//Dump directory listing
+	const uint32_t nmax = 32;
+	KVSListEntry list[nmax];
+	uint32_t nfound = g_kvs->EnumObjects(list, nmax);
+	m_stream->Printf("    Objects:\n");
+	m_stream->Printf("        Key               Size  Revisions\n");
+	int size = 0;
+	for(uint32_t i=0; i<nfound; i++)
+	{
+		m_stream->Printf("        %-16s %5d  %d\n", list[i].key, list[i].size, list[i].revs);
+		size += list[i].size;
+	}
+	m_stream->Printf("    %d objects total (%d.%02d kB)\n",
+		nfound,
+		size/1024, (size % 1024) * 100 / 1024);
 }
 
 void DemoCLISessionContext::ShowHardware()
