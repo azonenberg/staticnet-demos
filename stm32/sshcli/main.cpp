@@ -455,6 +455,11 @@ void InitSSH()
 		if(!g_kvs->StoreObject("ssh.hostpriv", CryptoEngine::GetHostPrivateKey(), ECDSA_KEY_SIZE))
 			g_log(Logger::ERROR, "Unable to store SSH host private key to flash\n");
 	}
+
+	char buf[64] = {0};
+	STM32CryptoEngine tmp;
+	tmp.GetHostKeyFingerprint(buf, sizeof(buf));
+	g_log("ED25519 key fingerprint is SHA256:%s.\n", buf);
 }
 
 bool TestEthernet(uint32_t num_frames)

@@ -43,6 +43,7 @@ enum cmdid_t
 	CMD_ALL,
 	CMD_DEFAULT_GATEWAY,
 	CMD_EXIT,
+	CMD_FINGERPRINT,
 	CMD_FLASH,
 	CMD_HARDWARE,
 	CMD_HOSTNAME,
@@ -50,6 +51,7 @@ enum cmdid_t
 	CMD_RELOAD,
 	CMD_ROUTE,
 	CMD_SHOW,
+	CMD_SSH,
 	CMD_ZEROIZE,
 };
 
@@ -96,11 +98,19 @@ static const clikeyword_t g_showIpCommands[] =
 	{NULL,				INVALID_COMMAND,		NULL,						NULL}
 };
 
+static const clikeyword_t g_showSshCommands[] =
+{
+	{"fingerprint",		CMD_FINGERPRINT,		NULL,						"Show the SSH host key fingerprint (in OpenSSH base64 SHA256 format)"},
+
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
+};
+
 static const clikeyword_t g_showCommands[] =
 {
 	{"flash",			CMD_FLASH,				NULL,						"Print contents and size of config storage"},
-	{"hardware",		CMD_HARDWARE,			NULL,						"Look at hardware"},
+	{"hardware",		CMD_HARDWARE,			NULL,						"Print hardware information"},
 	{"ip",				CMD_IP,					g_showIpCommands,			"Print IP information"},
+	{"ssh",				CMD_SSH,				g_showSshCommands,			"Print SSH information"},
 
 	{NULL,				INVALID_COMMAND,		NULL,	NULL}
 };
@@ -375,6 +385,18 @@ void DemoCLISessionContext::OnShowCommand()
 					break;
 			}
 			break;
+
+		case CMD_SSH:
+			switch(m_command[2].m_commandID)
+			{
+				case CMD_FINGERPRINT:
+					ShowSSHFingerprint();
+					break;
+
+				default:
+					break;
+			}
+			break;
 	}
 }
 
@@ -559,6 +581,14 @@ void DemoCLISessionContext::ShowIPRoute()
 		g_ipconfig.m_gateway.m_octets[1],
 		g_ipconfig.m_gateway.m_octets[2],
 		g_ipconfig.m_gateway.m_octets[3]);
+}
+
+void DemoCLISessionContext::ShowSSHFingerprint()
+{
+	char buf[64] = {0};
+	STM32CryptoEngine tmp;
+	tmp.GetHostKeyFingerprint(buf, sizeof(buf));
+	m_stream->Printf("ED25519 key fingerprint is SHA256:%s.\n", buf);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

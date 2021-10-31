@@ -67,6 +67,7 @@ protected:
 	void ShowHardware();
 	void ShowIPAddr();
 	void ShowIPRoute();
+	void ShowSSHFingerprint();
 
 	void OnReload();
 
