@@ -403,7 +403,7 @@ void DemoCLISessionContext::OnShowCommand()
 void DemoCLISessionContext::ShowFlash()
 {
 	//Print info about the flash memory in general
-	m_stream->Printf("Flash configuration storage is 2 banks of %d kB\n", g_kvs->GetBlockSize());
+	m_stream->Printf("Flash configuration storage is 2 banks of %d kB\n", g_kvs->GetBlockSize() / 1024);
 	if(g_kvs->IsLeftBankActive())
 		m_stream->Printf("    Active bank: Left\n");
 	else
@@ -413,8 +413,8 @@ void DemoCLISessionContext::ShowFlash()
 		g_kvs->GetLogCapacity(),
 		g_kvs->GetFreeLogEntries()*100 / g_kvs->GetLogCapacity());
 	m_stream->Printf("    Data area:   %6d / %6d kB free      (%d %%)\n",
-		g_kvs->GetFreeDataSpace(),
-		g_kvs->GetDataCapacity(),
+		g_kvs->GetFreeDataSpace() / 1024,
+		g_kvs->GetDataCapacity() / 1024,
 		g_kvs->GetFreeDataSpace() * 100 / g_kvs->GetDataCapacity());
 
 	//Dump directory listing
