@@ -60,22 +60,7 @@ void InitSPI();
 void InitKVS();
 void InitEthernet();
 bool TestEthernet(uint32_t num_frames);
-
-static const uint8_t g_hostkeyPriv[32] =
-{
-	0xb2, 0xc8, 0x0c, 0x44, 0xb1, 0xad, 0x19, 0xb5,
-	0x7a, 0x66, 0x5e, 0xa1, 0x7c, 0x78, 0x8b, 0x7b,
-	0x4d, 0x20, 0xbf, 0x19, 0x49, 0x85, 0x97, 0x9e,
-	0xf2, 0x79, 0x3e, 0xdc, 0x83, 0xf4, 0xd1, 0xa7
-};
-
-static const uint8_t g_hostkeyPub[32] =
-{
-	0xf7, 0x45, 0xd2, 0x13, 0x13, 0x4b, 0x19, 0x97,
-	0xcf, 0xcf, 0x86, 0x98, 0xcc, 0x2b, 0x0c, 0xd2,
-	0xc0, 0x45, 0xb1, 0xc9, 0xd4, 0xba, 0x22, 0x9f,
-	0x08, 0x8c, 0x66, 0x90, 0xf2, 0x4b, 0xf4, 0xbf
-};
+void InitSSH();
 
 uint8_t GetFPGAStatus();
 
@@ -97,9 +82,7 @@ int main()
 	InitSPI();
 	InitKVS();
 	InitEthernet();
-
-	//Set up SSH host keys
-	CryptoEngine::SetHostKey(g_hostkeyPub, g_hostkeyPriv);
+	InitSSH();
 
 	//Enable interrupts only after all setup work is done
 	EnableInterrupts();
@@ -439,6 +422,39 @@ void InitEthernet()
 
 	//Save the stack so we can use it later
 	g_ethStack = &eth;
+}
+
+void InitSSH()
+{
+	g_log("Initializing SSH server\n");
+	LogIndenter li(g_log);
+
+	unsigned char pub[ECDSA_KEY_SIZE] = {0};
+	unsigned char priv[ECDSA_KEY_SIZE] = {0};
+
+	bool found = true;
+	if(!g_kvs->ReadObject("ssh.hostpub", pub, ECDSA_KEY_SIZE))
+		found = false;
+	if(!g_kvs->ReadObject("ssh.hostpriv", priv, ECDSA_KEY_SIZE))
+		found = false;
+
+	if(found)
+	{
+		g_log("Using existing SSH host key\n");
+		CryptoEngine::SetHostKey(pub, priv);
+	}
+
+	else
+	{
+		g_log("No SSH host key in flash, generating new key pair\n");
+		STM32CryptoEngine tmp;
+		tmp.GenerateHostKey();
+
+		if(!g_kvs->StoreObject("ssh.hostpub", CryptoEngine::GetHostPublicKey(), ECDSA_KEY_SIZE))
+			g_log(Logger::ERROR, "Unable to store SSH host public key to flash\n");
+		if(!g_kvs->StoreObject("ssh.hostpriv", CryptoEngine::GetHostPrivateKey(), ECDSA_KEY_SIZE))
+			g_log(Logger::ERROR, "Unable to store SSH host private key to flash\n");
+	}
 }
 
 bool TestEthernet(uint32_t num_frames)

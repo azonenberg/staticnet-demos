@@ -454,7 +454,6 @@ void DemoCLISessionContext::ShowHardware()
 	if( (SCB.CPUID & 0xff00fff0) == 0x4100c270 )
 	{
 		m_stream->Printf("ARM Cortex-M7 r%dp%d\n", (SCB.CPUID >> 20) & 0xf, (SCB.CPUID & 0xf));
-		m_stream->Printf("CPUID = %08x\n", &CPUID);
 		if(CPUID.CLIDR & 2)
 		{
 			m_stream->Printf("    L1 data cache present\n");
