@@ -53,6 +53,11 @@ void DemoTCPProtocol::OnConnectionAccepted(TCPTableEntry* state)
 	m_server.OnConnectionAccepted(state);
 }
 
+void DemoTCPProtocol::OnConnectionClosed(TCPTableEntry* state)
+{
+	m_server.OnConnectionClosed(state);
+}
+
 bool DemoTCPProtocol::OnRxData(TCPTableEntry* state, uint8_t* payload, uint16_t payloadLen)
 {
 	//Discard anything not to port 22

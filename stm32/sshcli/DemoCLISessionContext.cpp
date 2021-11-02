@@ -82,7 +82,7 @@ static const clikeyword_t g_defaultGatewayCommands[] =
 static const clikeyword_t g_ipCommands[] =
 {
 	{"address",			CMD_ADDRESS,			g_ipAddressCommands,		"Set the IPv4 address and subnet mask"},
-	{"default-gateway",	CMD_DEFAULT_GATEWAY,	g_defaultGatewayCommands,	"Set the IPv4 address and subnet mask"},
+	{"default-gateway",	CMD_DEFAULT_GATEWAY,	g_defaultGatewayCommands,	"Set the IPv4 default route"},
 
 	{NULL,				INVALID_COMMAND,		NULL,						NULL}
 };

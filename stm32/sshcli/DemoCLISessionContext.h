@@ -36,7 +36,6 @@
 
 #include <embedded-cli/CLIOutputStream.h>
 #include <embedded-cli/CLISessionContext.h>
-//#include <staticnet/cli/SSHOutputStream.h>
 
 class DemoCLISessionContext : public CLISessionContext
 {
