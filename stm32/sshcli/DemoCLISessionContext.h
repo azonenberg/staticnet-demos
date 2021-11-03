@@ -62,6 +62,7 @@ protected:
 
 	void OnDefaultGateway(const char* ipstring);
 	void OnShowCommand();
+	void ShowARPCache();
 	void ShowFlash();
 	void ShowHardware();
 	void ShowIPAddr();

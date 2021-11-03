@@ -94,6 +94,7 @@ int main()
 	int nextRxFrame = 0;
 	uint32_t numRxFrames = 0;
 	uint32_t numRxBad = 0;
+	uint32_t nextAgingTick = 0;
 	while(1)
 	{
 		//Wait for an interrupt
@@ -107,6 +108,13 @@ int main()
 		//Poll for UART input
 		if(g_cliUART->HasInput())
 			g_uartCliContext.OnKeystroke(g_cliUART->BlockingRead());
+
+		//Check for aging on stuff once a second
+		if(g_logTimer->GetCount() > nextAgingTick)
+		{
+			g_ethStack->OnAgingTick();
+			nextAgingTick = g_logTimer->GetCount() + 10000;
+		}
 	}
 
 	return 0;

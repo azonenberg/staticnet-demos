@@ -41,6 +41,8 @@ enum cmdid_t
 {
 	CMD_ADDRESS,
 	CMD_ALL,
+	CMD_ARP,
+	CMD_CACHE,
 	CMD_DEFAULT_GATEWAY,
 	CMD_EXIT,
 	CMD_FINGERPRINT,
@@ -90,6 +92,13 @@ static const clikeyword_t g_ipCommands[] =
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // "show"
 
+static const clikeyword_t g_showArpCommands[] =
+{
+	{"cache",			CMD_CACHE,				NULL,						"Show contents of the ARP cache"},
+
+	{NULL,				INVALID_COMMAND,		NULL,						NULL}
+};
+
 static const clikeyword_t g_showIpCommands[] =
 {
 	{"address",			CMD_ADDRESS,			NULL,						"Show the IPv4 address and subnet mask"},
@@ -107,9 +116,10 @@ static const clikeyword_t g_showSshCommands[] =
 
 static const clikeyword_t g_showCommands[] =
 {
+	{"arp",				CMD_ARP,				g_showArpCommands,			"Print ARP information"},
 	{"flash",			CMD_FLASH,				NULL,						"Print contents and size of config storage"},
 	{"hardware",		CMD_HARDWARE,			NULL,						"Print hardware information"},
-	{"ip",				CMD_IP,					g_showIpCommands,			"Print IP information"},
+	{"ip",				CMD_IP,					g_showIpCommands,			"Print IPv4 information"},
 	{"ssh",				CMD_SSH,				g_showSshCommands,			"Print SSH information"},
 
 	{NULL,				INVALID_COMMAND,		NULL,	NULL}
@@ -362,6 +372,18 @@ void DemoCLISessionContext::OnShowCommand()
 {
 	switch(m_command[1].m_commandID)
 	{
+		case CMD_ARP:
+			switch(m_command[2].m_commandID)
+			{
+				case CMD_CACHE:
+					ShowARPCache();
+					break;
+
+				default:
+					break;
+			}
+			break;
+
 		case CMD_FLASH:
 			ShowFlash();
 			break;
@@ -397,6 +419,34 @@ void DemoCLISessionContext::OnShowCommand()
 					break;
 			}
 			break;
+	}
+}
+
+void DemoCLISessionContext::ShowARPCache()
+{
+	auto cache = g_ethStack->GetARP()->GetCache();
+
+	uint32_t ways = cache->GetWays();
+	uint32_t lines = cache->GetLines();
+	m_stream->Printf("ARP cache is %d ways of %d lines, %d spaces total\n", ways, lines, ways*lines);
+
+	m_stream->Printf("Expiration  HWaddress           Address\n");
+
+	for(uint32_t i=0; i<ways; i++)
+	{
+		auto way = cache->GetWay(i);
+		for(uint32_t j=0; j<lines; j++)
+		{
+			auto& line = way->m_lines[j];
+			if(line.m_valid)
+			{
+				m_stream->Printf("%10d  %02x:%02x:%02x:%02x:%02x:%02x   %d.%d.%d.%d\n",
+					line.m_lifetime,
+					line.m_mac[0], line.m_mac[1], line.m_mac[2], line.m_mac[3], line.m_mac[4], line.m_mac[5],
+					line.m_ip.m_octets[0], line.m_ip.m_octets[1], line.m_ip.m_octets[2], line.m_ip.m_octets[3]
+				);
+			}
+		}
 	}
 }
 

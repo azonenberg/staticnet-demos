@@ -64,6 +64,7 @@ extern KVS* g_kvs;
 extern char g_hostname[33];
 extern MACAddress g_macAddress;
 extern IPv4Config g_ipconfig;
+extern EthernetProtocol* g_ethStack;
 
 //Register IDs for the FPGA
 enum regids
